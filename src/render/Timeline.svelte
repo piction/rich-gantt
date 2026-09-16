@@ -72,6 +72,17 @@
     return s ? s + ELLIPSIS : '';
   }
 
+  // Right-aligned duration (e.g. "5d"), shown inside the bar only when the FULL label plus a
+  // gap plus the duration all fit — i.e. there is leftover space beyond the label.
+  const DUR_GAP = 8;
+  function fitDuration(b: Bar, duration: number): string {
+    const s = `${duration}d`;
+    const inner = b.w - 2 * LABEL_PAD;
+    const labelW = textWidth(b.label);
+    const need = (labelW > 0 ? labelW + DUR_GAP : 0) + textWidth(s);
+    return need <= inner ? s : '';
+  }
+
   function isAnchor(id: string): boolean {
     return doc.tasks.get(id)?.position.kind === 'absolute';
   }
@@ -160,6 +171,25 @@
   function milestonePath(b: Bar): string {
     const r = b.h / 2;
     return `M ${b.cx},${b.cy - r} L ${b.cx + r},${b.cy} L ${b.cx},${b.cy + r} L ${b.cx - r},${b.cy} Z`;
+  }
+
+  // Chevron ">" marking a packed `after` junction. The glyph spans x-CHEV..x+1, so its visual
+  // center sits left of the seam midpoint; nudge it right by CHEV_SHIFT to sit in the gap.
+  const CHEV = 4;
+  const CHEV_SHIFT = 2;
+  function chevronPath(x: number, y: number): string {
+    const cx = x + CHEV_SHIFT;
+    return `M ${cx - CHEV},${y - CHEV} L ${cx + 1},${y} L ${cx - CHEV},${y + CHEV}`;
+  }
+
+  // Break the packed dependency: pin the successor to its current start (drops the single
+  // incoming `after`), same destructive op as a front-edge drag (§6.9). It then unpacks.
+  function breakJunction(e: Event, toId: string): void {
+    e.preventDefault();
+    e.stopPropagation();
+    const s = schedule.tasks.get(toId);
+    if (!s) return;
+    onEdit(setAbsoluteStart(doc, toId, s.startDay));
   }
 
   const edgeW = (b: Bar) => Math.min(EDGE, Math.max(2, b.w / 3));
@@ -261,22 +291,37 @@
               y={bar.cy + 4}
               class="bar-label inside"
               style={`fill:${bar.labelFill}`}>{fitLabel(bar)}</text>
+            {#if task}
+              {@const durText = fitDuration(bar, task.duration)}
+              {#if durText}
+                <text
+                  x={bar.x + bar.w - LABEL_PAD}
+                  y={bar.cy + 4}
+                  text-anchor="end"
+                  class="bar-label inside duration"
+                  style={`fill:${bar.labelFill}`}>{durText}</text>
+              {/if}
+            {/if}
 
-            <!-- drag zones (transparent, on top of the bar) -->
+            <!-- drag zones (transparent, on top of the bar). Packed bars omit the front-edge
+                 pin zone: it would collide with the predecessor's end-resize edge, and the
+                 chevron junction is the affordance to detach them instead. -->
+            {#if !bar.packedAfter}
+              <rect
+                x={bar.x}
+                y={bar.y}
+                width={edgeW(bar)}
+                height={bar.h}
+                class="zone edge"
+                on:pointerdown={(e) => startDrag(e, bar.id, 'pin')}
+              >
+                <title>Pin absolute start (detaches dependency)</title>
+              </rect>
+            {/if}
             <rect
-              x={bar.x}
+              x={bar.x + (bar.packedAfter ? 0 : edgeW(bar))}
               y={bar.y}
-              width={edgeW(bar)}
-              height={bar.h}
-              class="zone edge"
-              on:pointerdown={(e) => startDrag(e, bar.id, 'pin')}
-            >
-              <title>Pin absolute start (detaches dependency)</title>
-            </rect>
-            <rect
-              x={bar.x + edgeW(bar)}
-              y={bar.y}
-              width={Math.max(0, bar.w - 2 * edgeW(bar))}
+              width={Math.max(0, bar.w - (bar.packedAfter ? 1 : 2) * edgeW(bar))}
               height={bar.h}
               class="zone middle"
               class:movable={anchor}
@@ -321,6 +366,27 @@
     <g class="arrows">
       {#each layout.arrows as arrow}
         <path d={arrow.d} class="arrow" marker-end="url(#arrowhead)" />
+      {/each}
+    </g>
+
+    <!-- packed after-chain junctions: a chevron at the successor's front (click to detach);
+         a gap between the bars gets a dashed lead-in from the predecessor's end -->
+    <g class="junctions">
+      {#each layout.junctions as j (j.toId)}
+        {#if j.gap}
+          <line x1={j.fromX} y1={j.y} x2={j.x} y2={j.y} class="junction-gap" />
+        {/if}
+        <path
+          d={chevronPath(j.x, j.y)}
+          class="junction-chevron"
+          role="button"
+          tabindex="0"
+          aria-label="Detach dependency"
+          on:click={(e) => breakJunction(e, j.toId)}
+          on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && breakJunction(e, j.toId)}
+        >
+          <title>Depends on previous task — click to detach</title>
+        </path>
       {/each}
     </g>
 
@@ -386,6 +452,11 @@
   .bar-label.outside {
     fill: var(--fg);
   }
+  /* Duration reads as a secondary annotation. */
+  .bar-label.duration {
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+  }
   .bar:hover .bar-rect,
   .bar:focus .bar-rect,
   .bar:hover .milestone,
@@ -416,6 +487,25 @@
   }
   .arrowhead {
     fill: var(--arrow);
+  }
+  /* packed after-chain junctions */
+  .junction-chevron {
+    fill: none;
+    stroke: var(--arrow);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    cursor: pointer;
+  }
+  .junction-chevron:hover,
+  .junction-chevron:focus {
+    stroke: var(--bar-stroke-hover);
+    outline: none;
+  }
+  .junction-gap {
+    stroke: var(--arrow);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
   }
   /* dot connectors */
   .dot {

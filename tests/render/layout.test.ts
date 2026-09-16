@@ -13,18 +13,33 @@ function layout(zoom: 'month' | 'week' | 'day') {
 }
 
 describe('computeLayout', () => {
-  it('produces one bar per task and one arrow per dependency edge', () => {
+  it('produces one bar per task; packed after-chains become chevron junctions', () => {
     const l = layout('day');
     expect(l.bars.length).toBe(9);
-    // sample after-edges: dev1,dev2←arch1; arch2←dev1; dev3,dev4←arch2; arch3←dev3; dev5,dev6←arch3
-    expect(l.arrows.length).toBe(8);
+    // sample after-edges: dev1,dev2←arch1; arch2←dev1; dev3,dev4←arch2; arch3←dev3; dev5,dev6←arch3.
+    // The three linear heads (dev1←arch1, dev3←arch2, dev5←arch3) pack onto their
+    // predecessor's row → chevron junctions; the other five stay as elbow arrows.
+    expect(l.arrows.length).toBe(5);
+    expect(l.junctions.map((j) => j.toId).sort()).toEqual(['dev1', 'dev3', 'dev5']);
     expect(l.sections.length).toBe(3);
   });
 
-  it('positions bars in increasing y and within the canvas height', () => {
+  it('packs a linear after-chain onto one row and starts a new row otherwise', () => {
+    const l = layout('week');
+    const at = (id: string) => l.barsById.get(id)!;
+    // arch1 → dev1 is a linear chain: same row (shared y), dev1 to the right of arch1.
+    expect(at('dev1').y).toBe(at('arch1').y);
+    expect(at('dev1').packedAfter).toBe('arch1');
+    expect(at('dev1').x).toBeGreaterThanOrEqual(at('arch1').x + at('arch1').w - 0.5);
+    // dev2 also depends on arch1 but arch1's row is taken → dev2 drops to a new row.
+    expect(at('dev2').y).toBeGreaterThan(at('arch1').y);
+    expect(at('dev2').packedAfter).toBeUndefined();
+  });
+
+  it('positions bars in non-decreasing y within the canvas height', () => {
     const l = layout('week');
     const ys = l.bars.map((b) => b.y);
-    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThan(ys[i - 1]);
+    for (let i = 1; i < ys.length; i++) expect(ys[i]).toBeGreaterThanOrEqual(ys[i - 1]);
     expect(Math.max(...ys)).toBeLessThan(l.height);
     expect(l.width).toBeGreaterThan(0);
   });

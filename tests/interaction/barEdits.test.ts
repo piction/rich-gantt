@@ -52,6 +52,21 @@ describe('setAbsoluteStart (front/middle drag)', () => {
     const s = computeSchedule(next);
     expect(s.tasks.get('c')!.start).toBe('2026-02-03');
   });
+
+  it('detaches a packed task in place (chevron break) — pinned at its current start', () => {
+    const doc = makeDoc();
+    const before = computeSchedule(doc);
+    // The chevron break pins the successor to its own current start day, so it detaches
+    // from `a` without visually jumping.
+    const next = setAbsoluteStart(doc, 'b', before.tasks.get('b')!.startDay);
+    expect(next.tasks.get('b')!.position.kind).toBe('absolute');
+    const after = computeSchedule(next);
+    expect(after.tasks.get('b')!.startDay).toBe(before.tasks.get('b')!.startDay);
+    // Moving `a` no longer drags `b` — the dependency is gone.
+    const moved = setAbsoluteStart(next, 'a', toEpochDay('2026-06-01'));
+    const s = computeSchedule(moved);
+    expect(s.tasks.get('b')!.startDay).toBe(before.tasks.get('b')!.startDay);
+  });
 });
 
 describe('setDuration (end-edge drag)', () => {
