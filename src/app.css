@@ -1,0 +1,94 @@
+/* All colors are defined here (view concern). Render code only references these vars. */
+:root {
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #6b7280;
+  --panel-bg: #f6f7f9;
+  --border: #d9dce1;
+
+  --timeline-bg: #ffffff;
+  --gridline: #eceef1;
+  --weekend-fill: #f4f5f7;
+  --section-alt: #fafbfc;
+
+  --bar-stroke: rgba(0, 0, 0, 0.12);
+  --bar-stroke-hover: #111827;
+  --arrow: #8a94a6;
+
+  /* categorical bar palette (cycled by the coloring attribute's distinct values).
+     Each --bar-N-fg is the label color chosen to contrast that fill (labels drawn inside). */
+  --bar-0: #3b82f6;
+  --bar-1: #10b981;
+  --bar-2: #f59e0b;
+  --bar-3: #8b5cf6;
+  --bar-4: #ef4444;
+  --bar-5: #14b8a6;
+  --bar-none: #9ca3af; /* tasks with no value for the coloring key */
+  --bar-0-fg: #ffffff;
+  --bar-1-fg: #062e22;
+  --bar-2-fg: #3d2a02;
+  --bar-3-fg: #ffffff;
+  --bar-4-fg: #ffffff;
+  --bar-5-fg: #04302b;
+  --bar-none-fg: #1f2937;
+
+  --error-bg: #fef2f2;
+  --error-fg: #b91c1c;
+  --error-border: #fca5a5;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0f1115;
+  --fg: #e5e7eb;
+  --fg-muted: #9aa3b2;
+  --panel-bg: #171a21;
+  --border: #2a2f3a;
+
+  --timeline-bg: #0f1115;
+  --gridline: #1c2028;
+  --weekend-fill: #161a21;
+  --section-alt: #12151b;
+
+  --bar-stroke: rgba(255, 255, 255, 0.14);
+  --bar-stroke-hover: #f9fafb;
+  --arrow: #6b7486;
+
+  --bar-0: #60a5fa;
+  --bar-1: #34d399;
+  --bar-2: #fbbf24;
+  --bar-3: #a78bfa;
+  --bar-4: #f87171;
+  --bar-5: #2dd4bf;
+  --bar-none: #6b7280;
+  /* dark palette is lighter/more saturated, so dark labels contrast best (none stays light) */
+  --bar-0-fg: #06182e;
+  --bar-1-fg: #052e21;
+  --bar-2-fg: #3d2a02;
+  --bar-3-fg: #1c1035;
+  --bar-4-fg: #380c0c;
+  --bar-5-fg: #04302b;
+  --bar-none-fg: #f9fafb;
+
+  --error-bg: #2a1416;
+  --error-fg: #fca5a5;
+  --error-border: #7f1d1d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app {
+  height: 100%;
+}
