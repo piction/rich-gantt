@@ -41,6 +41,50 @@ export function isWeekend(epochDay: number): boolean {
   return d === 6 || d === 7;
 }
 
+/** Smallest day >= `day` that falls on a working day (snaps a weekend start to Monday). */
+export function nextWorkingDay(day: number): number {
+  let d = day;
+  while (isWeekend(Math.floor(d))) d = Math.floor(d) + 1;
+  return d;
+}
+
+/**
+ * Calendar day reached by laying `dur` working-day units forward from `start`, skipping
+ * weekends (which consume none of the duration). `start` is assumed to be a working day.
+ * Used for working-day scheduling when weekends are excluded, so a task's span is measured in
+ * work days: e.g. 5d from a Thursday ends the following Thursday, not the next Tuesday.
+ */
+export function addWorkingDays(start: number, dur: number): number {
+  let end = start;
+  let remaining = dur;
+  while (remaining > 1e-9) {
+    const dayStart = Math.floor(end);
+    if (isWeekend(dayStart)) {
+      end = dayStart + 1; // step over a weekend day; it consumes no duration
+      continue;
+    }
+    const avail = dayStart + 1 - end; // unused fraction of the current working day
+    const take = Math.min(avail, remaining);
+    end += take;
+    remaining -= take;
+  }
+  return end;
+}
+
+/** Count of working-day units in [from, to) (weekends contribute 0). Sign follows to-from. */
+export function workingDaysBetween(from: number, to: number): number {
+  if (to < from) return -workingDaysBetween(to, from);
+  let sum = 0;
+  let d = from;
+  while (d < to) {
+    const dayStart = Math.floor(d);
+    const next = Math.min(dayStart + 1, to);
+    if (!isWeekend(dayStart)) sum += next - d;
+    d = next;
+  }
+  return sum;
+}
+
 /** First-of-month? (used for month tick generation). */
 export function isFirstOfMonth(epochDay: number): boolean {
   return EPOCH.add({ days: Math.trunc(epochDay) }).day === 1;

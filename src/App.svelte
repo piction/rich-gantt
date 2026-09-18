@@ -3,7 +3,9 @@
   import SplitPane from './ui/SplitPane.svelte';
   import FileToolbar from './ui/FileToolbar.svelte';
   import ZoomToggle from './ui/ZoomToggle.svelte';
+  import WeekendControl from './ui/WeekendControl.svelte';
   import ColorKeySelect from './ui/ColorKeySelect.svelte';
+  import ColorLegend from './ui/ColorLegend.svelte';
   import ErrorBanner from './ui/ErrorBanner.svelte';
   import CodeEditor from './ui/CodeEditor.svelte';
   import HoverCard from './ui/HoverCard.svelte';
@@ -19,7 +21,8 @@
     commitDocument,
   } from './stores/documentStore';
   import { zoom, theme, colorKey } from './stores/viewStore';
-  import { availableColorKeys } from './render/colors';
+  import { WEEKEND_EXCLUDED_SCALE } from './render/scale';
+  import { availableColorKeys, colorLegend } from './render/colors';
   import type { Task } from './model/types';
 
   let hoverTask: Task | null = null;
@@ -41,6 +44,7 @@
   // first key by default) so the timeline and the dropdown agree.
   $: colorKeys = $activeDocument ? availableColorKeys($activeDocument) : [];
   $: effectiveColorKey = $colorKey ?? colorKeys[0] ?? null;
+  $: legend = $activeDocument ? colorLegend($activeDocument, effectiveColorKey) : [];
 
   // Load the richer bundled sample on first load (falls back to the built-in default).
   onMount(async () => {
@@ -60,7 +64,9 @@
       <div slot="top" class="viz">
         <div class="viz-toolbar">
           <ZoomToggle />
+          <WeekendControl />
           <ColorKeySelect keys={colorKeys} selected={effectiveColorKey} />
+          <ColorLegend entries={legend} />
         </div>
         <div class="viz-canvas">
           {#if $activeDocument && $schedule}
@@ -69,6 +75,7 @@
               schedule={$schedule}
               zoom={$zoom}
               colorKey={effectiveColorKey}
+              weekendDayScale={$activeDocument.excludeWeekends ? WEEKEND_EXCLUDED_SCALE : 1}
               {onBarEnter}
               {onBarLeave}
               onEdit={commitDocument}

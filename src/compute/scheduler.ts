@@ -4,9 +4,16 @@
 
 import type { ParsedDocument, ScheduleResult, ScheduledTask, TaskId } from '../model/types';
 import { buildGraph, topoSort } from './graph';
-import { toEpochDay, fromEpochDay } from './dateMath';
+import { toEpochDay, fromEpochDay, addWorkingDays, nextWorkingDay } from './dateMath';
 
-export function computeSchedule(doc: ParsedDocument): ScheduleResult {
+export interface ScheduleOptions {
+  // Working-day scheduling: durations are laid over working days only and starts snap off
+  // weekends, so a task's span reflects work days (used when weekends are excluded).
+  excludeWeekends?: boolean;
+}
+
+export function computeSchedule(doc: ParsedDocument, opts: ScheduleOptions = {}): ScheduleResult {
+  const workDays = opts.excludeWeekends ?? doc.excludeWeekends ?? false;
   const topo = topoSort(buildGraph(doc.tasks));
   const order = topo.order ?? doc.order; // fallback; validated docs are always acyclic
   const tasks = new Map<TaskId, ScheduledTask>();
@@ -24,7 +31,8 @@ export function computeSchedule(doc: ParsedDocument): ScheduleResult {
         .filter((v): v is number => v !== undefined);
       startDay = ends.length > 0 ? Math.max(...ends) : 0; // fan-in = latest predecessor end
     }
-    const endDay = startDay + task.duration;
+    if (workDays) startDay = nextWorkingDay(startDay);
+    const endDay = workDays ? addWorkingDays(startDay, task.duration) : startDay + task.duration;
 
     tasks.set(id, {
       id,

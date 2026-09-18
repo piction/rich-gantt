@@ -11,6 +11,7 @@ import { isValidDateString, isValidDuration } from '../compute/dateMath';
 export interface MermaidParseResult {
   title: string | null;
   dateFormat: string | null;
+  excludeWeekends: boolean;
   tasks: ScheduleTask[];
   sections: Section[];
   errors: ParseError[];
@@ -27,6 +28,7 @@ export function parseMermaid(lines: SourceLine[]): MermaidParseResult {
   const sections: Section[] = [];
   let title: string | null = null;
   let dateFormat: string | null = null;
+  let excludeWeekends = false;
   let currentSection = '';
   let sectionEntry: Section | null = null;
 
@@ -64,8 +66,12 @@ export function parseMermaid(lines: SourceLine[]): MermaidParseResult {
       currentSection = line.replace(/^section\s+/i, '').trim();
       continue;
     }
-    // Ignore other stock directives (view concerns), e.g. `excludes weekends`, `axisFormat`.
-    if (/^(excludes|includes|axisFormat|todayMarker|weekday|tickInterval)\b/i.test(line)) {
+    // `excludes weekends` toggles working-day layout; other stock directives are ignored.
+    if (/^excludes\b/i.test(line)) {
+      if (/\bweekends\b/i.test(line)) excludeWeekends = true;
+      continue;
+    }
+    if (/^(includes|axisFormat|todayMarker|weekday|tickInterval)\b/i.test(line)) {
       continue;
     }
 
@@ -76,7 +82,7 @@ export function parseMermaid(lines: SourceLine[]): MermaidParseResult {
     }
   }
 
-  return { title, dateFormat, tasks, sections, errors };
+  return { title, dateFormat, excludeWeekends, tasks, sections, errors };
 }
 
 function parseTaskLine(

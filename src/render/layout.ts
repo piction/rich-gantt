@@ -85,6 +85,7 @@ export interface Layout {
   headerHeight: number;
   t0: number;
   pxPerDay: number;
+  weekendDayScale: number;
   bars: Bar[];
   barsById: Map<string, Bar>;
   arrows: Arrow[];
@@ -99,6 +100,7 @@ export function computeLayout(
   schedule: ScheduleResult,
   zoom: ZoomLevel,
   colorKey: string | null = null,
+  weekendDayScale = 1,
   config: LayoutConfig = DEFAULT_CONFIG,
 ): Layout {
   const pxPerDay = PX_PER_DAY[zoom];
@@ -111,9 +113,9 @@ export function computeLayout(
   const maxEnd = scheduled.length ? Math.max(...scheduled.map((s) => s.endDay)) : 1;
   const t0 = Math.floor(minStart) - config.padDays;
   const t1 = Math.ceil(maxEnd) + config.padDays;
-  const width = (t1 - t0) * pxPerDay;
 
-  const x = (day: number) => dayToX(day, t0, pxPerDay);
+  const x = (day: number) => dayToX(day, t0, pxPerDay, weekendDayScale);
+  const width = x(t1);
 
   // Bars are colored by a single metadata attribute (Design 1); one scale for the whole doc
   // keeps a value's color identical across sections. The key defaults to the first metadata
@@ -159,7 +161,7 @@ export function computeLayout(
         hasRow = true;
       }
       let bx = x(s.startDay);
-      let bw = Math.max(0, (s.endDay - s.startDay) * pxPerDay);
+      let bw = Math.max(0, x(s.endDay) - x(s.startDay));
       const by = rowTop + config.barPadY;
 
       // Open a small seam gap so touching packed bars read as distinct segments (see SEAM_GAP).
@@ -217,15 +219,16 @@ export function computeLayout(
     }
   }
 
-  // Ticks + weekend shading.
-  const ticks: AxisTick[] = generateTicks(t0, t1, zoom).map((t: Tick) => ({
-    x: x(t.day),
-    label: t.label,
-  }));
+  // Ticks + weekend shading. When weekends are excluded, drop the per-weekend-day labels
+  // (only produced at day zoom) so the compressed weekend slivers stay unlabeled.
+  const excluded = weekendDayScale < 1;
+  const ticks: AxisTick[] = generateTicks(t0, t1, zoom)
+    .filter((t: Tick) => !(excluded && zoom === 'day' && isWeekend(t.day)))
+    .map((t: Tick) => ({ x: x(t.day), label: t.label }));
   const weekends: WeekendBand[] = [];
   if (zoom !== 'month') {
     for (let day = t0; day < t1; day++) {
-      if (isWeekend(day)) weekends.push({ x: x(day), w: pxPerDay });
+      if (isWeekend(day)) weekends.push({ x: x(day), w: x(day + 1) - x(day) });
     }
   }
 
@@ -235,6 +238,7 @@ export function computeLayout(
     headerHeight: config.headerHeight,
     t0,
     pxPerDay,
+    weekendDayScale,
     bars,
     barsById,
     arrows,

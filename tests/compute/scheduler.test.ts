@@ -55,6 +55,52 @@ describe('fan-in resolves to the latest predecessor end', () => {
   });
 });
 
+describe('working-day scheduling (weekends excluded)', () => {
+  const src = [
+    '```mermaid',
+    'gantt',
+    '    dateFormat YYYY-MM-DD',
+    '    section S',
+    '    A :a, 2026-09-17, 5d', // Thursday
+    '    B :b, after a, 2d',
+    '```',
+  ].join('\n');
+
+  it('lays a duration over work days only, spanning weekends', () => {
+    const r = parseDocument(src);
+    if (!r.ok) throw new Error('parse failed');
+    const s = computeSchedule(r.doc, { excludeWeekends: true });
+    // 5 work days from Thu 09-17: Thu,Fri,Mon,Tue,Wed → ends exclusive Thu 09-24.
+    expect(s.tasks.get('a')!.endDay).toBe(toEpochDay('2026-09-24'));
+    expect(s.tasks.get('a')!.end).toBe('2026-09-23'); // inclusive last work day (Wed)
+    // Successor starts on that work day (no weekend to skip here).
+    expect(s.tasks.get('b')!.startDay).toBe(toEpochDay('2026-09-24'));
+  });
+
+  it('snaps a weekend start forward to Monday', () => {
+    const wk = [
+      '```mermaid',
+      'gantt',
+      '    dateFormat YYYY-MM-DD',
+      '    section S',
+      '    A :a, 2026-09-19, 1d', // Saturday
+      '```',
+    ].join('\n');
+    const r = parseDocument(wk);
+    if (!r.ok) throw new Error('parse failed');
+    const s = computeSchedule(r.doc, { excludeWeekends: true });
+    expect(s.tasks.get('a')!.start).toBe('2026-09-21'); // Monday
+  });
+
+  it('default (calendar) scheduling still counts weekend days', () => {
+    const r = parseDocument(src);
+    if (!r.ok) throw new Error('parse failed');
+    const s = computeSchedule(r.doc);
+    // Plain calendar: 5d from Thu 09-17 ends exclusive 09-22.
+    expect(s.tasks.get('a')!.endDay).toBe(toEpochDay('2026-09-22'));
+  });
+});
+
 describe('half-day durations chain exactly', () => {
   it('0.5d task advances the successor by half a day', () => {
     const src = [

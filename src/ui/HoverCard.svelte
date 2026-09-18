@@ -27,7 +27,10 @@
 
 {#if task}
   <div class="card" bind:this={card}>
-    <div class="title">{task.label} <span class="id">{task.id}</span></div>
+    <div class="title">
+      <span class="title-text">{task.label} <span class="id">{task.id}</span></span>
+      <span class="duration">{task.duration}d</span>
+    </div>
     {#if task.metadata && task.metadata.body}
       <div class="notes">{@html renderMetadataMarkdown(task.metadata.body)}</div>
     {:else}
@@ -53,8 +56,27 @@
     pointer-events: none;
   }
   .title {
-    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     margin-bottom: 4px;
+  }
+  .title-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+  }
+  .duration {
+    flex: none;
+    align-self: flex-start;
+    color: var(--fg-muted);
+    font-weight: 600;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    background: var(--bg-muted, rgba(127, 127, 127, 0.15));
+    border-radius: 4px;
+    padding: 1px 6px;
+    white-space: nowrap;
   }
   .id {
     color: var(--fg-muted);

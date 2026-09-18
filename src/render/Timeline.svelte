@@ -2,6 +2,7 @@
   import type { ParsedDocument, ScheduleResult, Task } from '../model/types';
   import type { ZoomLevel } from './scale';
   import { xToDay } from './scale';
+  import { workingDaysBetween } from '../compute/dateMath';
   import { computeLayout, sourceAnchor, frontAnchor, type Bar } from './layout';
   import { computeSchedule } from '../compute/scheduler';
   import {
@@ -15,6 +16,7 @@
   export let schedule: ScheduleResult;
   export let zoom: ZoomLevel;
   export let colorKey: string | null = null;
+  export let weekendDayScale = 1;
 
   // Bubbled up so the parent can position a Floating-UI hover card.
   export let onBarEnter: (task: Task, el: SVGElement) => void = () => {};
@@ -47,8 +49,9 @@
   const TARGET_R = 14; // hit radius when snapping a dropped edge to a front dot
 
   $: renderDoc = previewDoc ?? doc;
+  $: excluded = renderDoc.excludeWeekends;
   $: renderSchedule = previewDoc ? computeSchedule(previewDoc) : schedule;
-  $: layout = computeLayout(renderDoc, renderSchedule, zoom, colorKey);
+  $: layout = computeLayout(renderDoc, renderSchedule, zoom, colorKey, weekendDayScale);
 
   // Labels are drawn inside the bar, colored to contrast the fill. A label that doesn't fit is
   // clipped to the widest prefix that fits with a trailing "..." — so text never spills past the
@@ -89,7 +92,7 @@
 
   function pointerDay(e: PointerEvent): number {
     const x = e.clientX - svgEl.getBoundingClientRect().left;
-    return xToDay(x, layout.t0, layout.pxPerDay);
+    return xToDay(x, layout.t0, layout.pxPerDay, layout.weekendDayScale);
   }
 
   function pointerPoint(e: PointerEvent): { x: number; y: number } {
@@ -145,7 +148,12 @@
     if (!drag) return;
     const day = pointerDay(e);
     if (drag.mode === 'resize') {
-      previewDoc = setDuration(doc, drag.id, day - drag.startDay);
+      // In working-day mode the duration is measured in work days, so the dragged span must
+      // discount any weekends it crosses.
+      const span = excluded
+        ? workingDaysBetween(drag.startDay, day)
+        : day - drag.startDay;
+      previewDoc = setDuration(doc, drag.id, span);
     } else {
       // move (anchor) and pin (front edge) both set an absolute start.
       previewDoc = setAbsoluteStart(doc, drag.id, day - drag.grabOffsetDays);

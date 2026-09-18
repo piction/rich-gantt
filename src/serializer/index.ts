@@ -14,6 +14,7 @@ function serializeMermaid(doc: ParsedDocument): string {
   const lines: string[] = ['```mermaid', 'gantt'];
   if (doc.title) lines.push(`${INDENT}title ${doc.title}`);
   lines.push(`${INDENT}dateFormat ${doc.dateFormat}`);
+  if (doc.excludeWeekends) lines.push(`${INDENT}excludes weekends`);
 
   // Align the ':' across all task lines for readability (deterministic given the model).
   const labelWidth = Math.max(

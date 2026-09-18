@@ -33,6 +33,7 @@ export function parseDocument(source: string): ParseResult {
   const correlated = correlate(
     mermaid.title,
     mermaid.dateFormat,
+    mermaid.excludeWeekends,
     mermaid.tasks,
     mermaid.sections,
     metadata.metadata,

@@ -55,6 +55,7 @@ export interface Section {
 export interface ParsedDocument {
   title: string | null;
   dateFormat: string; // must be 'YYYY-MM-DD' in v1
+  excludeWeekends: boolean; // mermaid `excludes weekends` directive; drives working-day layout
   sections: Section[];
   tasks: Map<TaskId, Task>;
   order: TaskId[]; // full document order, for canonical re-serialization

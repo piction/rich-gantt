@@ -52,3 +52,24 @@ export function buildColorScale(
       : { fill: `var(--bar-${i})`, labelFill: `var(--bar-${i}-fg)` };
   };
 }
+
+/** One value of the coloring key paired with the fill its bars use. */
+export interface LegendEntry {
+  value: string; // 'None' for tasks missing a value for the key
+  fill: string;
+}
+
+/**
+ * Legend entries for coloring the document by `key`: each distinct value (sorted, matching
+ * buildColorScale's assignment) with its fill, plus a trailing None entry when any task lacks a
+ * value. Returns [] when no key is selected.
+ */
+export function colorLegend(doc: ParsedDocument, key: string | null): LegendEntry[] {
+  if (key === null) return [];
+  const values = [...doc.tasks.values()].map((t) => t.metadata?.attrs.get(key));
+  const colorFor = buildColorScale(values);
+  const distinct = [...new Set(values.filter((v): v is string => !!v))].sort();
+  const entries: LegendEntry[] = distinct.map((v) => ({ value: v, fill: colorFor(v).fill }));
+  if (values.some((v) => !v)) entries.push({ value: 'None', fill: NONE_FILL });
+  return entries;
+}

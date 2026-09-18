@@ -20,6 +20,7 @@ export interface CorrelateResult {
 export function correlate(
   title: string | null,
   dateFormat: string | null,
+  excludeWeekends: boolean,
   scheduleTasks: ScheduleTask[],
   sections: Section[],
   metadata: Map<string, TaskMetadata>,
@@ -56,6 +57,7 @@ export function correlate(
   const doc: ParsedDocument = {
     title,
     dateFormat: dateFormat ?? 'YYYY-MM-DD',
+    excludeWeekends,
     sections,
     tasks,
     order,

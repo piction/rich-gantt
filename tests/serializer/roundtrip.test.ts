@@ -11,6 +11,7 @@ function normalize(doc: ParsedDocument) {
   return {
     title: doc.title,
     dateFormat: doc.dateFormat,
+    excludeWeekends: doc.excludeWeekends,
     sections: doc.sections,
     order: doc.order,
     tasks: [...doc.tasks.values()].map(({ sourceLine, ...rest }) => rest),
@@ -41,6 +42,26 @@ describe('serializer round-trip', () => {
     const twice = serializeDocument(reparsed.doc);
 
     expect(twice).toBe(once);
+  });
+
+  it('preserves the `excludes weekends` directive through a round-trip', () => {
+    const src = [
+      '```mermaid',
+      'gantt',
+      '    dateFormat YYYY-MM-DD',
+      '    excludes weekends',
+      '    section S',
+      '    A :a, 2026-01-01, 2d',
+      '```',
+    ].join('\n');
+    const r = parseDocument(src);
+    if (!r.ok) throw new Error('parse failed');
+    expect(r.doc.excludeWeekends).toBe(true);
+    const text = serializeDocument(r.doc);
+    expect(text).toContain('excludes weekends');
+    const again = parseDocument(text);
+    if (!again.ok) throw new Error('re-parse failed');
+    expect(again.doc.excludeWeekends).toBe(true);
   });
 
   it('output re-parses cleanly with no errors', () => {
