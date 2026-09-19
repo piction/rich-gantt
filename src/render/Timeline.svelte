@@ -17,20 +17,39 @@
   export let zoom: ZoomLevel;
   export let colorKey: string | null = null;
   export let weekendDayScale = 1;
+  // The currently selected (click-locked) task, so its bar can render a persistent selection.
+  export let selectedId: string | null = null;
 
   // Bubbled up so the parent can position a Floating-UI hover card.
   export let onBarEnter: (task: Task, el: SVGElement) => void = () => {};
   export let onBarLeave: () => void = () => {};
+  // A double-click on a bar selects it (a single click may start a drag on anchor bars).
+  export let onBarSelect: (task: Task, el: SVGElement) => void = () => {};
   // Called when a drag gesture commits a mutated document.
   export let onEdit: (doc: ParsedDocument) => void = () => {};
 
   let svgEl: SVGSVGElement;
 
+  // Horizontal scroll offset of the timeline container. Section labels are translated by this so
+  // they stay pinned to the left edge instead of scrolling off with the chart content.
+  let scrollLeft = 0;
+
   // Drag state. While dragging, previewDoc overrides the committed doc for a live preview.
   type Mode = 'move' | 'pin' | 'resize';
-  let drag: { id: string; mode: Mode; grabOffsetDays: number; startDay: number } | null =
-    null;
+  let drag: {
+    id: string;
+    mode: Mode;
+    grabOffsetDays: number;
+    startDay: number;
+    el: SVGElement;
+  } | null = null;
   let previewDoc: ParsedDocument | null = null;
+
+  // Manual double-tap detection for draggable bars: their pointerdown preventDefaults the
+  // native mouse events, so the group's `dblclick` never fires. We instead treat two quick
+  // press-without-move taps on the same bar as a selecting double-click.
+  let lastTap: { id: string; time: number } | null = null;
+  const DBL_MS = 400;
 
   // Dot-connector state (§6.8): rubber-band an `after` edge from a source dot (center-bottom
   // of a predecessor) to a front dot (start of the successor). sx/sy is the fixed source
@@ -134,7 +153,15 @@
     e.stopPropagation();
     const s = schedule.tasks.get(id);
     if (!s) return;
-    drag = { id, mode, grabOffsetDays: pointerDay(e) - s.startDay, startDay: s.startDay };
+    const el = (e.currentTarget as Element).closest('.bar') as SVGElement | null;
+    if (!el) return;
+    drag = {
+      id,
+      mode,
+      grabOffsetDays: pointerDay(e) - s.startDay,
+      startDay: s.startDay,
+      el,
+    };
     svgEl.setPointerCapture(e.pointerId);
     onBarLeave(); // hide hover card during drag
   }
@@ -170,10 +197,32 @@
     }
     if (!drag) return;
     const committed = previewDoc;
+    const { id, el } = drag;
     svgEl.releasePointerCapture?.(e.pointerId);
     drag = null;
     previewDoc = null;
-    if (committed) onEdit(committed);
+    if (committed) {
+      lastTap = null;
+      onEdit(committed);
+      return;
+    }
+    // Press without move = a tap; two quick taps on the same bar select it (see DBL_MS).
+    const now = e.timeStamp;
+    if (lastTap && lastTap.id === id && now - lastTap.time < DBL_MS) {
+      lastTap = null;
+      const task = doc.tasks.get(id);
+      if (task) onBarSelect(task, el);
+    } else {
+      lastTap = { id, time: now };
+    }
+  }
+
+  function onBarDblClick(e: MouseEvent, id: string, el: SVGElement): void {
+    // A double-click on a bar selects it (a single click may start a drag on anchor bars).
+    e.stopPropagation();
+    const task = doc.tasks.get(id);
+    if (!task) return;
+    onBarSelect(task, el);
   }
 
   function milestonePath(b: Bar): string {
@@ -201,9 +250,17 @@
   }
 
   const edgeW = (b: Bar) => Math.min(EDGE, Math.max(2, b.w / 3));
+
+  // A selected bar grows slightly around its own center (so the label scales with it) to read
+  // as prominent rather than as a detached outline. Kept subtle — emphasis, not exaggeration.
+  const SELECT_SCALE = 1.08;
+  function selectTransform(bar: Bar): string {
+    const ox = bar.isMilestone ? bar.cx : bar.x + bar.w / 2;
+    return `translate(${ox} ${bar.cy}) scale(${SELECT_SCALE}) translate(${-ox} ${-bar.cy})`;
+  }
 </script>
 
-<div class="timeline-scroll">
+<div class="timeline-scroll" on:scroll={(e) => (scrollLeft = e.currentTarget.scrollLeft)}>
   <svg
     class="timeline"
     class:dragging={drag !== null}
@@ -239,7 +296,7 @@
       {/each}
     </g>
 
-    <!-- section bands + labels -->
+    <!-- section bands -->
     <g class="sections">
       {#each layout.sections as section, i}
         <rect
@@ -250,7 +307,6 @@
           class="section-band"
           class:alt={i % 2 === 1}
         />
-        <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
       {/each}
     </g>
 
@@ -268,8 +324,11 @@
         {@const anchor = task?.position.kind === 'absolute'}
         <g
           class="bar"
+          class:selected={bar.id === selectedId}
+          transform={bar.id === selectedId ? selectTransform(bar) : null}
           role="button"
           tabindex="0"
+          on:dblclick={(e) => onBarDblClick(e, bar.id, e.currentTarget)}
           on:mouseenter={(e) => task && !drag && onBarEnter(task, e.currentTarget)}
           on:mouseleave={onBarLeave}
           on:focus={(e) => task && onBarEnter(task, e.currentTarget)}
@@ -367,6 +426,14 @@
             class:target={connect?.targetId === bar.id}
           />
         </g>
+      {/each}
+    </g>
+
+    <!-- section labels: pinned to the left edge by counter-translating the horizontal scroll,
+         so they stay visible when the chart is scrolled right. Drawn above bars for legibility. -->
+    <g class="section-labels" transform={`translate(${scrollLeft}, 0)`}>
+      {#each layout.sections as section}
+        <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
       {/each}
     </g>
 
@@ -471,6 +538,18 @@
   .bar:focus .milestone {
     stroke: var(--bar-stroke-hover);
     stroke-width: 2;
+  }
+  /* Persistent selection: the bar is scaled up slightly (see selectTransform) and lifted with
+     a soft shadow + bolder label. The shadow is applied to the bar shape only (not the whole
+     group) so the connector dots/label don't cast their own lopsided edge. No outline stroke —
+     a stroke reads as a detached ring once the bar is scaled, so the hover stroke is dropped. */
+  .bar.selected .bar-rect,
+  .bar.selected .milestone {
+    stroke: none;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  }
+  .bar.selected .bar-label {
+    font-weight: 700;
   }
   /* drag zones */
   .zone {

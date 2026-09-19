@@ -28,6 +28,22 @@ function snapDuration(days: number): number {
 }
 
 /**
+ * Set the free-form metadata body (the `## Task metadata: <id>` block). `attrs` are left as-is
+ * here — they are re-derived from the body when commitDocument re-parses the serialized text.
+ */
+export function setMetadataBody(
+  doc: ParsedDocument,
+  id: TaskId,
+  body: string,
+): ParsedDocument {
+  return withTask(doc, id, (t) => {
+    // Don't materialize an empty metadata block for a task that never had one.
+    if (!t.metadata && body.trim() === '') return t;
+    return { ...t, metadata: { id, attrs: t.metadata?.attrs ?? new Map(), body } };
+  });
+}
+
+/**
  * Front-edge / middle drag: pin the task to an absolute start. This REPLACES the position,
  * so any incoming `after` is broken — the one destructive op (§6.9). Duration is preserved.
  */
