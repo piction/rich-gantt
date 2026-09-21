@@ -9,7 +9,9 @@
   import ErrorBanner from './ui/ErrorBanner.svelte';
   import CodeEditor from './ui/CodeEditor.svelte';
   import HoverCard from './ui/HoverCard.svelte';
+  import SectionCard from './ui/SectionCard.svelte';
   import Timeline from './render/Timeline.svelte';
+  import type { SectionBand } from './render/layout';
   import {
     sourceText,
     activeDocument,
@@ -46,6 +48,18 @@
     hoverTask = null;
     hoverScheduled = null;
     hoverAnchor = null;
+  }
+
+  // Transient section-duration hover state (drives the SectionCard popup).
+  let hoverSection: SectionBand | null = null;
+  let hoverSectionAnchor: Element | null = null;
+  function onSectionEnter(section: SectionBand, el: SVGElement): void {
+    hoverSection = section;
+    hoverSectionAnchor = el;
+  }
+  function onSectionLeave(): void {
+    hoverSection = null;
+    hoverSectionAnchor = null;
   }
   // Each double-click selects the task and signals the card to enter editor mode.
   let editSignal = 0;
@@ -140,6 +154,8 @@
               {onBarEnter}
               {onBarLeave}
               {onBarSelect}
+              {onSectionEnter}
+              {onSectionLeave}
               onEdit={commitDocument}
             />
           {:else}
@@ -170,6 +186,8 @@
   {onStartChange}
   {editSignal}
 />
+
+<SectionCard section={hoverSection} anchor={hoverSectionAnchor} />
 
 <style>
   .app {

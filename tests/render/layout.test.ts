@@ -49,6 +49,29 @@ describe('computeLayout', () => {
     expect(layout('day').weekends.length).toBeGreaterThan(0);
   });
 
+  it('computes section duration (span) and total work (summed task days)', () => {
+    // Two overlapping tasks: work sums to 6d, but the span is only 5d (first start →
+    // last end), and the dates bracket that span (end is the inclusive last day touched).
+    const src = [
+      '```mermaid',
+      'gantt',
+      '    dateFormat YYYY-MM-DD',
+      '    section S',
+      '    A :a1, 2026-01-01, 2d',
+      '    B :b1, 2026-01-02, 4d',
+      '```',
+    ].join('\n');
+    const r = parseDocument(src);
+    if (!r.ok) throw new Error('parse failed');
+    const l = computeLayout(r.doc, computeSchedule(r.doc), 'day');
+    const s = l.sections[0];
+    expect(s.hasTasks).toBe(true);
+    expect(s.totalWorkDays).toBe(6); // 2 + 4
+    expect(s.durationDays).toBe(5); // 2026-01-01 → 2026-01-06 (exclusive end)
+    expect(s.startDate).toBe('2026-01-01');
+    expect(s.endDate).toBe('2026-01-05'); // inclusive last day B touches
+  });
+
   it('routes an arrow from the predecessor top when the successor is above it', () => {
     // Successor Y is declared before its predecessor X, so Y's bar sits above X's.
     const src = [

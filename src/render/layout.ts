@@ -5,7 +5,7 @@
 import type { ParsedDocument, ScheduleResult } from '../model/types';
 import { dayToX, PX_PER_DAY, type ZoomLevel } from './scale';
 import { generateTicks, type Tick } from './ticks';
-import { isWeekend } from '../compute/dateMath';
+import { isWeekend, workingDaysBetween } from '../compute/dateMath';
 import { buildColorScale, availableColorKeys } from './colors';
 
 export interface LayoutConfig {
@@ -67,6 +67,15 @@ export interface SectionBand {
   name: string;
   y: number;
   height: number;
+  // Section duration: days from the first task's start to the last task's end. Measured in
+  // working days when weekends are excluded (matching how task durations are counted), else in
+  // calendar days. `totalWorkDays` is the sum of the individual task durations — the time it
+  // would take if every task ran one after another. Dates bracket the same span.
+  durationDays: number;
+  totalWorkDays: number;
+  startDate: string; // YYYY-MM-DD of the earliest task start ('' when the section is empty)
+  endDate: string; // YYYY-MM-DD of the latest task end ('' when the section is empty)
+  hasTasks: boolean;
 }
 
 export interface AxisTick {
@@ -104,6 +113,7 @@ export function computeLayout(
   config: LayoutConfig = DEFAULT_CONFIG,
 ): Layout {
   const pxPerDay = PX_PER_DAY[zoom];
+  const excluded = weekendDayScale < 1; // working-day layout when weekends are excluded
   const scheduled = [...schedule.tasks.values()];
 
   // Timeline extent.
@@ -142,10 +152,25 @@ export function computeLayout(
     let rowTop = y; // top of the current open row
     let rowTail: string | null = null; // last non-milestone id placed on the current row
     let hasRow = false;
+    // Section duration accumulators: extent (first start → last end) and summed task work.
+    let secMinStart = Infinity;
+    let secMaxEnd = -Infinity;
+    let secStartStr = '';
+    let secEndStr = '';
+    let secWork = 0;
     for (const id of section.taskIds) {
       const s = schedule.tasks.get(id);
       const task = doc.tasks.get(id);
       if (!s || !task) continue;
+      if (s.startDay < secMinStart) {
+        secMinStart = s.startDay;
+        secStartStr = s.start;
+      }
+      if (s.endDay > secMaxEnd) {
+        secMaxEnd = s.endDay;
+        secEndStr = s.end;
+      }
+      secWork += task.duration;
       const isMilestone = task.kind === 'milestone' || s.endDay === s.startDay;
       const packedAfter =
         hasRow &&
@@ -198,7 +223,22 @@ export function computeLayout(
       barsById.set(id, bar);
       rowTail = isMilestone ? null : id;
     }
-    sections.push({ name: section.name, y: bandStart, height: y - bandStart });
+    const hasTasks = secMaxEnd > -Infinity;
+    const durationDays = hasTasks
+      ? excluded
+        ? workingDaysBetween(secMinStart, secMaxEnd)
+        : secMaxEnd - secMinStart
+      : 0;
+    sections.push({
+      name: section.name,
+      y: bandStart,
+      height: y - bandStart,
+      durationDays,
+      totalWorkDays: secWork,
+      startDate: secStartStr,
+      endDate: secEndStr,
+      hasTasks,
+    });
   });
 
   const height = Math.max(y, config.headerHeight + config.rowHeight);
@@ -221,7 +261,6 @@ export function computeLayout(
 
   // Ticks + weekend shading. When weekends are excluded, drop the per-weekend-day labels
   // (only produced at day zoom) so the compressed weekend slivers stay unlabeled.
-  const excluded = weekendDayScale < 1;
   const ticks: AxisTick[] = generateTicks(t0, t1, zoom)
     .filter((t: Tick) => !(excluded && zoom === 'day' && isWeekend(t.day)))
     .map((t: Tick) => ({ x: x(t.day), label: t.label }));

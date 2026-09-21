@@ -3,7 +3,7 @@
   import type { ZoomLevel } from './scale';
   import { xToDay } from './scale';
   import { workingDaysBetween } from '../compute/dateMath';
-  import { computeLayout, sourceAnchor, frontAnchor, type Bar } from './layout';
+  import { computeLayout, sourceAnchor, frontAnchor, type Bar, type SectionBand } from './layout';
   import { computeSchedule } from '../compute/scheduler';
   import {
     setAbsoluteStart,
@@ -25,6 +25,9 @@
   export let onBarLeave: () => void = () => {};
   // A double-click on a bar selects it (a single click may start a drag on anchor bars).
   export let onBarSelect: (task: Task, el: SVGElement) => void = () => {};
+  // Hovering a section's duration label bubbles up so the parent can position an info popup.
+  export let onSectionEnter: (section: SectionBand, el: SVGElement) => void = () => {};
+  export let onSectionLeave: () => void = () => {};
   // Called when a drag gesture commits a mutated document.
   export let onEdit: (doc: ParsedDocument) => void = () => {};
 
@@ -104,6 +107,9 @@
     const need = (labelW > 0 ? labelW + DUR_GAP : 0) + textWidth(s);
     return need <= inner ? s : '';
   }
+
+  // Section duration shown next to its name; trims float artifacts from working-day spans.
+  const fmtDays = (n: number): string => `${Math.round(n * 100) / 100}d`;
 
   function isAnchor(id: string): boolean {
     return doc.tasks.get(id)?.position.kind === 'absolute';
@@ -433,7 +439,26 @@
          so they stay visible when the chart is scrolled right. Drawn above bars for legibility. -->
     <g class="section-labels" transform={`translate(${scrollLeft}, 0)`}>
       {#each layout.sections as section}
-        <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
+        {#if section.hasTasks}
+          <g
+            class="section-label-group"
+            role="button"
+            tabindex="0"
+            aria-label={`${section.name}, ${fmtDays(section.durationDays)}`}
+            on:mouseenter={(e) => onSectionEnter(section, e.currentTarget)}
+            on:mouseleave={onSectionLeave}
+            on:focus={(e) => onSectionEnter(section, e.currentTarget)}
+            on:blur={onSectionLeave}
+          >
+            <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
+            <text
+              x={6 + textWidth(section.name) + 8}
+              y={section.y + 16}
+              class="section-dur-text">{fmtDays(section.durationDays)}</text>
+          </g>
+        {:else}
+          <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
+        {/if}
       {/each}
     </g>
 
@@ -509,6 +534,25 @@
     font-size: 12px;
     font-weight: 600;
     fill: var(--fg-muted);
+  }
+  .section-label-group {
+    cursor: help;
+  }
+  /* The day count reads as a secondary annotation, matching the in-bar task duration. */
+  .section-dur-text {
+    font-size: 11px;
+    fill: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+  }
+  .section-label-group:hover .section-label,
+  .section-label-group:focus .section-label,
+  .section-label-group:hover .section-dur-text,
+  .section-label-group:focus .section-dur-text {
+    fill: var(--fg);
+  }
+  .section-label-group:focus {
+    outline: none;
   }
   .tick-label {
     font-size: 11px;
