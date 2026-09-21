@@ -176,4 +176,28 @@ describe('non-fatal warnings', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.doc.tasks.get('a')?.metadata).toBeNull();
   });
+
+  it('keeps a fenced code block whose content has # lines inside the metadata body', () => {
+    const body = [
+      'Setup:',
+      '',
+      '```bash',
+      '# install deps',
+      'npm install',
+      '## not a heading',
+      '```',
+      '',
+      'Done.',
+    ].join('\n');
+    const src = doc('    A :a, 2026-01-01, 2d', `## Task metadata: a\n\n${body}`);
+    const r = parseDocument(src);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const md = r.doc.tasks.get('a')?.metadata?.body ?? '';
+      expect(md).toContain('# install deps');
+      expect(md).toContain('npm install');
+      expect(md).toContain('## not a heading');
+      expect(md).toContain('Done.');
+    }
+  });
 });
