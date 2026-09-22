@@ -123,7 +123,7 @@
   // Load the richer bundled sample on first load (falls back to the built-in default).
   onMount(async () => {
     try {
-      const res = await fetch('/sample-plan.md');
+      const res = await fetch(new URL('sample-plan.md', document.baseURI));
       if (res.ok) loadSource(await res.text());
     } catch {
       /* keep default */
