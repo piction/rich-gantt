@@ -6,7 +6,7 @@ import type { ParseError, TaskMetadata } from '../model/types';
 import type { MetadataBlock, SourceLine } from './tokenizer';
 
 // A dictionary bullet: `- key: value` (or `*`), tolerant of surrounding whitespace.
-const KV_RE = /^\s*[-*]\s+([^:]+?)\s*:\s*(.*)$/;
+export const KV_RE =/^\s*[-*]\s+([^:]+?)\s*:\s*(.*)$/;
 
 export interface MetadataParseResult {
   metadata: Map<string, TaskMetadata>;

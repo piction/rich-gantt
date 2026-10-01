@@ -177,6 +177,21 @@ describe('non-fatal warnings', () => {
     if (r.ok) expect(r.doc.tasks.get('a')?.metadata).toBeNull();
   });
 
+  it('keeps # and ## headings inside the body; only the next metadata heading ends a block', () => {
+    const src = doc(
+      '    A :a, 2026-01-01, 2d\n    B :b, after a, 1d',
+      '## Task metadata: a\n\nIntro\n\n# Big\n\n## Decisions\n- keep it\n\n## Task metadata: b\n\nB notes',
+    );
+    const r = parseDocument(src);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.doc.tasks.get('a')?.metadata?.body).toBe(
+        'Intro\n\n# Big\n\n## Decisions\n- keep it',
+      );
+      expect(r.doc.tasks.get('b')?.metadata?.body).toBe('B notes');
+    }
+  });
+
   it('keeps a fenced code block whose content has # lines inside the metadata body', () => {
     const body = [
       'Setup:',

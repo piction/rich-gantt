@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode · B — Inspector panel</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  .split { display: flex; }
+  .split .stage-scroll { flex: 1; border-right: 1px solid var(--border); }
+  .inspector { width: 300px; flex: none; background: var(--surface); padding: 14px 16px; font-size: 12.5px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .inspector h4 { margin: 0 0 2px; font-size: 15px; }
+  .inspector .id { font: 12px ui-monospace, monospace; color: var(--fg-muted); }
+  .inspector .grp { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+  .inspector .grp-t { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 6px; }
+  .kvrow { display: flex; justify-content: space-between; align-items: center; margin: 5px 0; }
+  .kvrow .k { color: var(--fg-muted); }
+  .numbox { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 7px; }
+  .numbox button { border: 0; background: none; padding: 4px 6px; cursor: pointer; color: var(--fg-muted); }
+  .numbox span { min-width: 34px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .linkrow { display: flex; align-items: center; gap: 6px; background: var(--kbd-bg); border-radius: 7px; padding: 4px 6px 4px 8px; }
+  .linkrow .x { margin-left: auto; border: 0; background: none; cursor: pointer; color: var(--fg-muted); padding: 2px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .act { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 7px 9px; cursor: pointer; }
+  .act kbd { margin-left: auto; }
+  .act.danger { color: var(--danger); }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>B · Inspector panel</h1>
+<p class="lead">
+  Click a bar → a docked panel on the right shows the task's full properties and actions. Bar
+  stays highlighted; moving is still a body-drag on the bar. Familiar (Figma / MS Project), roomy,
+  but your eyes and mouse travel between the bar and the panel for every edit.
+</p>
+<div id="frames"></div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const SEL = 'dev3';
+
+  function inspector(t, s, { dur = t.dur } = {}) {
+    return `<aside class="inspector">
+      <h4>${G.esc(t.label)}</h4><span class="id">${t.id}</span> · <span class="muted">${t.section}</span>
+      <div class="grp"><div class="grp-t">Schedule</div>
+        <div class="kvrow"><span class="k">Starts</span>${t.after.length
+          ? `<span class="linkrow">${G.icon('link', 13)} after <b>${t.after.join(', ')}</b><button class="x" title="Unlink">${G.icon('x', 12)}</button></span>`
+          : `<span>${G.icon('calendar', 13)}</span>`}</div>
+        <div class="kvrow"><span class="k">Start / End</span><span>${G.fmtDay(s.start)} – ${G.fmtDay(s.end - 1)}</span></div>
+        <div class="kvrow"><span class="k">Length</span><span class="numbox"><button>${G.icon('minus', 12)}</button><span>${dur}d</span><button>${G.icon('plus', 12)}</button></span></div>
+      </div>
+      <div class="grp"><div class="grp-t">Details</div>
+        <div class="kvrow"><span class="k">type</span><span>${t.type}</span></div>
+        <div class="kvrow"><span class="k">owner</span><span>Jonas</span></div>
+        <p class="muted" style="margin:6px 0 0">Render bars as SVG rects on a day scale…</p>
+      </div>
+      <div class="grp"><div class="grp-t">Actions</div>
+        <div class="actions">
+          <button class="act">${G.icon('plus', 14)} Add after <kbd>A</kbd></button>
+          <button class="act">${G.icon('pencil', 14)} Edit <kbd>↵</kbd></button>
+          <button class="act">${G.icon('code', 14)} Source</button>
+          <button class="act danger">${G.icon('trash', 14)} Delete <kbd>Del</kbd></button>
+        </div>
+      </div>
+    </aside>`;
+  }
+
+  function splitFrame(opts, tasks, sel, extra = {}) {
+    const h = G.frame('#frames', opts);
+    const scroll = h.parentElement;
+    const wrap = document.createElement('div');
+    wrap.className = 'split';
+    scroll.replaceWith(wrap);
+    wrap.append(scroll);
+    const L = G.render(h, { tasks, selected: sel, ...extra });
+    const t = tasks.find((x) => x.id === sel);
+    wrap.insertAdjacentHTML('beforeend', inspector(t, L.sch.get(sel), extra));
+    return { h, L };
+  }
+
+  splitFrame({
+    step: 1, title: 'Click → focus + inspector',
+    text: 'All five functions visible at once, labelled — very discoverable.',
+    notes: ['<b>+</b> Everything labelled, room for dates and metadata, scales to more fields later.',
+            '<b>−</b> Panel steals ~300 px of timeline width, or pushes the chart (layout jump) when it opens.',
+            '<b>−</b> Bar ↔ panel eye travel on every length tweak; the panel doesn\'t follow the bar when you scroll.'],
+  }, G.sample(), SEL);
+
+  const t = G.sample();
+  const o = G.layout(t).bars.get(SEL);
+  const d = t.find((x) => x.id === SEL); d.after = []; d.start = o.start + 3;
+  splitFrame({
+    step: 2, title: 'Move — same body-drag as A',
+    text: 'Moving is inherently spatial, so it stays on the bar in every variant. Inspector updates live (link row disappears, date appears).',
+  }, t, SEL, { origin: o, broken: [{ from: 'arch2', to: SEL }] });
+</script>
+</body>
+</html>

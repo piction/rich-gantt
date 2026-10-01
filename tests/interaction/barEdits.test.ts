@@ -5,7 +5,14 @@ import {
   setDuration,
   addDependency,
   canAddDependency,
+  moveTask,
+  deleteTask,
+  newTaskId,
+  addTaskAfter,
+  updateTask,
+  splitMetadataBody,
 } from '../../src/interaction/barEdits';
+import { serializeDocument } from '../../src/serializer';
 import type { ParsedDocument } from '../../src/model/types';
 
 function makeDoc(): ParsedDocument {
@@ -72,5 +79,83 @@ describe('addDependency (dot-connector drop)', () => {
     // c depends on b depends on a; a→? adding a after c would cycle (a→c→b→a).
     expect(canAddDependency(doc, 'c', 'b')).toBe(false);
     expect(addDependency(doc, 'c', 'b')).toBe(doc);
+  });
+});
+
+describe('moveTask (focus-mode move / unlink)', () => {
+  it('pins to an absolute date and drops every `after` link', () => {
+    const doc = makeDoc();
+    const next = moveTask(doc, 'b', '2026-01-10');
+    expect(next.tasks.get('b')!.position).toEqual({ kind: 'absolute', date: '2026-01-10' });
+    expect(computeSchedule(next).tasks.get('c')!.start).toBe('2026-01-12'); // successor cascades
+  });
+});
+
+describe('deleteTask', () => {
+  it('removes the task everywhere and pins direct successors to their current start', () => {
+    const doc = makeDoc();
+    const before = computeSchedule(doc);
+    const next = deleteTask(doc, 'b', (id) => before.tasks.get(id)!.start);
+    expect(next.tasks.has('b')).toBe(false);
+    expect(next.order).not.toContain('b');
+    expect(next.sections[0].taskIds).not.toContain('b');
+    expect(next.tasks.get('c')!.position).toEqual({
+      kind: 'absolute',
+      date: before.tasks.get('c')!.start,
+    });
+    expect(next.tasks.get('d')).toBe(doc.tasks.get('d')); // unrelated task untouched
+  });
+});
+
+describe('newTaskId', () => {
+  it('uses the first word of the section, max 5 chars, plus a unique counter', () => {
+    const doc = makeDoc();
+    expect(newTaskId(doc, 'Foundation work')).toBe('found1');
+    expect(newTaskId(doc, 'Q3 & beyond')).toBe('q31');
+    expect(newTaskId(doc, '')).toBe('task1');
+    const { doc: d2 } = addTaskAfter(doc, 'a', { label: 'X', duration: 1, section: 'Foundation' });
+    expect(newTaskId(d2, 'Foundation')).toBe('found2');
+  });
+});
+
+describe('addTaskAfter', () => {
+  it('inserts right below the predecessor in its section, linked `after` it', () => {
+    const doc = makeDoc();
+    const { doc: next, id } = addTaskAfter(doc, 'a', {
+      label: 'New: thing',
+      duration: 2.2,
+      section: 'S',
+    });
+    expect(id).toBe('s1');
+    const t = next.tasks.get(id)!;
+    expect(t.position).toEqual({ kind: 'after', ids: ['a'] });
+    expect(t.label).toBe('New  thing'); // ':' would break the task line
+    expect(t.duration).toBe(2);
+    expect(next.sections[0].taskIds).toEqual(['a', id, 'b', 'c', 'd']);
+    // survives a serialize → parse round trip
+    const r = parseDocument(serializeDocument(next));
+    expect(r.ok && r.doc.tasks.get(id)!.position).toEqual({ kind: 'after', ids: ['a'] });
+  });
+});
+
+describe('updateTask / splitMetadataBody', () => {
+  it('splits keys from notes and writes them back, id unchanged', () => {
+    const parts = splitMetadataBody('- type: dev\n- owner: Jo\n\nSome **notes**.');
+    expect(parts).toEqual({ attrs: [['type', 'dev'], ['owner', 'Jo']], notes: 'Some **notes**.' });
+    const next = updateTask(makeDoc(), 'a', {
+      label: 'Renamed',
+      attrs: [['type', 'arch'], ['', 'dropped'], ['te:am', 'Core']],
+      notes: 'Hello',
+    });
+    const t = next.tasks.get('a')!;
+    expect(t.id).toBe('a');
+    expect(t.label).toBe('Renamed');
+    expect(t.metadata!.body).toBe('- type: arch\n- team: Core\n\nHello');
+    expect(t.metadata!.attrs.get('team')).toBe('Core');
+  });
+
+  it('removes the metadata block when everything is emptied', () => {
+    const next = updateTask(makeDoc(), 'a', { label: 'A', attrs: [], notes: '  ' });
+    expect(next.tasks.get('a')!.metadata).toBeNull();
   });
 });

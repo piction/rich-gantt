@@ -27,6 +27,8 @@
   import { availableColorKeys, colorLegend } from './render/colors';
   import type { Task, ScheduledTask } from './model/types';
 
+  let codeEditor: CodeEditor;
+
   // Transient hover state.
   let hoverTask: Task | null = null;
   let hoverScheduled: ScheduledTask | null = null;
@@ -99,6 +101,7 @@
               {onSectionEnter}
               {onSectionLeave}
               onEdit={commitDocument}
+              onJumpToSource={(line) => codeEditor?.revealLine(line)}
             />
           {:else}
             <div class="empty">No valid plan to display yet.</div>
@@ -109,7 +112,7 @@
       <div slot="bottom" class="code">
         <ErrorBanner errors={$parseErrors} warnings={$warnings} />
         <div class="code-editor">
-          <CodeEditor value={$sourceText} errors={$parseErrors} onChange={updateSource} />
+          <CodeEditor bind:this={codeEditor} value={$sourceText} errors={$parseErrors} onChange={updateSource} />
         </div>
       </div>
     </SplitPane>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode · A — Action pill</title>
+<link rel="stylesheet" href="mock.css" />
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>A · Action pill <span class="muted" style="font-weight:400">(recommended)</span></h1>
+<p class="lead">
+  Click a bar body → the bar is <b>focused</b>: it gets a ring, unrelated tasks fade, its own
+  dependency arrows turn accent. A compact pill floats above it with everything one click (or one
+  key) away. Direct manipulation stays on the bar itself: <b>drag the body to move</b>, drag the end
+  edge to resize (as today). Try it live in the <a href="playground.html">playground</a>.
+</p>
+<div id="frames"></div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const SEL = 'dev3';
+  const base = () => G.sample();
+  const notes = 'Render bars as SVG `<rect>`s on a day scale.\nOpen question: canvas for >500 tasks?';
+
+  // 0 — today
+  {
+    const h = G.frame('#frames', { step: 0, title: 'Today (reference)', text: 'No selection. Hover shows the metadata card; end-edge resize and dot connectors work as now.' });
+    G.render(h, { tasks: base() });
+  }
+
+  // 1 — focused
+  {
+    const h = G.frame('#frames', {
+      step: 1,
+      title: 'Click the bar body → focus',
+      text: 'One click, no modal. The pill sits above the bar (flips below near the top edge). Hover card is suppressed while focused — the pill replaces it.',
+      notes: [
+        '<b>Link chip</b> — shows <i>why</i> the bar is where it is. <code>after arch2</code> with an ✕ to unlink in place (pins to the current date). Absolute tasks show a 📅 date instead.',
+        '<b>Length stepper</b> — − / + by one day; click the number <i>or just start typing digits</i> to set an exact length.',
+        '<b>+ After</b> — the only labelled button: it is the most frequent "next step" action. Key <kbd>A</kbd>.',
+        '<b>Edit</b> <kbd>↵</kbd> and <b>Delete</b> <kbd>Del</kbd> — icon-only, tooltip shows the key. Delete is red only on hover (no scary red at rest).',
+        'Context stays readable: predecessor <code>arch2</code> and successor <code>arch3</code> stay at 85 %, everything else fades to 32 %. <kbd>Esc</kbd> / click empty space exits.',
+      ],
+    });
+    const L = G.render(h, { tasks: base(), selected: SEL });
+    const b = L.bars.get(SEL);
+    const p = G.place(h, G.pill({ link: { kind: 'after', names: ['arch2'] }, dur: '5' }), b.cx, b.y - 10);
+    requestAnimationFrame(() => {
+      const r = p.getBoundingClientRect(), hr = h.getBoundingClientRect();
+      const ox = r.left - hr.left, oy = r.top - hr.top;
+      const at = (sel, n) => {
+        const e = p.querySelector(sel).getBoundingClientRect();
+        G.callout(h, n, e.left - hr.left + e.width / 2, oy - 14);
+      };
+      at('.chip', 1); at('.stepper', 2); at('[data-act=add]', 3); at('[data-act=edit]', 4); at('[data-act=delete]', 4);
+      G.callout(h, 5, L.bars.get('dev2').x - 14, L.bars.get('dev2').cy);
+    });
+  }
+
+  // 2 — moving a linked task
+  {
+    const h = G.frame('#frames', {
+      step: 2,
+      title: 'Drag the body → move (breaks the link)',
+      text: 'Grab anywhere on a focused bar (cursor: grab). The link that will be cut is previewed <i>before</i> you release: red dashed arrow + scissors, and the readout says so.',
+      notes: [
+        'Snaps to whole days (<kbd>Alt</kbd> for half days). Dashed outline marks where it came from — drop back on it to cancel.',
+        'Successors (<code>arch3</code>…) cascade live, so you see the downstream impact while dragging.',
+        'Keyboard equivalent: <kbd>←</kbd>/<kbd>→</kbd> move by a day, <kbd>⇧←</kbd>/<kbd>⇧→</kbd> by a week. First nudge unlinks, same toast.',
+        'A 4 px drag threshold keeps a plain click from moving anything. Unfocused bars are not draggable — first click focuses, so you never move a bar by accident.',
+      ],
+    });
+    const t = base();
+    const L0 = G.layout(t);
+    const o = L0.bars.get(SEL);
+    const d = t.find((x) => x.id === SEL);
+    d.after = []; d.start = o.start + 3;
+    const L = G.render(h, { tasks: t, selected: SEL, origin: { x: o.x, y: o.y, w: o.w, h: o.h }, broken: [{ from: 'arch2', to: SEL }] });
+    const b = L.bars.get(SEL);
+    G.place(h, `<div class="readout">${G.fmtDay(b.start)} → ${G.fmtDay(b.end - 1)} · <b>+3d</b> · <span class="warn">unlinks arch2</span></div>`, b.cx, b.y - 10);
+    G.place(h, `<svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 2 L4 19 L8.5 15 L11.5 22 L14 21 L11 14 L17 14 Z" fill="#111" stroke="#fff" stroke-width="1.5"/></svg>`, b.cx + 6, b.cy, { ax: 0, ay: 0 });
+  }
+
+  // 3 — after release
+  {
+    const h = G.frame('#frames', {
+      step: 3,
+      title: 'Release → committed, with undo',
+      text: 'No confirmation dialog — the preview already told you. A toast offers a one-click undo. The chip now shows the pinned date.',
+      notes: ['The pill re-appears on the new position, so you can keep working (e.g. nudge length) without re-clicking.'],
+    });
+    const t = base();
+    const o = G.layout(t).bars.get(SEL);
+    const d = t.find((x) => x.id === SEL);
+    d.after = []; d.start = o.start + 3;
+    const L = G.render(h, { tasks: t, selected: SEL });
+    const b = L.bars.get(SEL);
+    G.place(h, G.pill({ link: { kind: 'date', text: G.fmtDay(b.start) }, dur: '5' }), b.cx, b.y - 10);
+    G.toast(h, `${G.icon('unlink', 14)} Unlinked from <b>arch2</b> · moved +3d <button>${G.icon('undo', 13)} Undo <kbd style="background:none;color:inherit">⌘Z</kbd></button>`, L);
+  }
+
+  // 4 — exact length
+  {
+    const h = G.frame('#frames', {
+      step: 4,
+      title: 'Set exact length — just type',
+      text: 'With a bar focused, typing a digit jumps straight into the length field (no click needed). The bar previews live; <kbd>↵</kbd> commits, <kbd>Esc</kbd> reverts.',
+      notes: [
+        'Accepts <code>7</code>, <code>7.5</code>, <code>2w</code> (→ 10 working days when weekends are excluded, else 14).',
+        '<kbd>+</kbd>/<kbd>−</kbd> step by one day without entering the field. Scroll-wheel over the number also steps.',
+        'Same value the end-edge drag sets — two routes, one model edit (<code>setDuration</code>).',
+      ],
+    });
+    const t = base();
+    t.find((x) => x.id === SEL).dur = 7;
+    const L = G.render(h, { tasks: t, selected: SEL });
+    const b = L.bars.get(SEL);
+    G.place(h, G.pill({ link: { kind: 'after', names: ['arch2'] }, dur: '7', editing: true }), b.cx, b.y - 10);
+  }
+
+  // 5 — add after
+  {
+    const h = G.frame('#frames', {
+      step: 5,
+      title: '+ After → bootstrap a successor',
+      text: 'A ghost bar appears right where the new task will land, already linked. A small popover asks only for what you cannot infer: a name. Everything else has a sensible default.',
+      notes: [
+        'Defaults: <b>section</b> = same as the focused task, <b>length</b> = same as the focused task, <b>position</b> = <code>after dev3</code>, <b>id</b> auto-generated from the name (editable later in source).',
+        '<kbd>↵</kbd> creates and focuses the new task. <kbd>⇧↵</kbd> creates and immediately opens another "+ After" on it — type a whole chain without touching the mouse.',
+        'Length chips are quick picks; typing a number in the name field is <i>not</i> ambiguous because the chips own the length.',
+      ],
+    });
+    const t = base();
+    const i = t.findIndex((x) => x.id === SEL);
+    t.splice(i + 1, 0, { id: 'new', label: 'Hover-card positioning', section: 'Core', dur: 5, after: [SEL], ghost: true, type: 'development' });
+    const L = G.render(h, { tasks: t, selected: SEL });
+    const g = L.bars.get('new');
+    G.place(h, G.addPopover({ after: 'SVG timeline & bars', name: 'Hover-card positioning', dur: 5, section: 'Core', typing: true }), g.x, g.y + g.h + 10, { ax: 0, ay: 0 });
+    h.parentElement.style.paddingBottom = '230px';
+  }
+
+  // 6 — edit
+  {
+    const h = G.frame('#frames', {
+      step: 6,
+      title: 'Edit → popover anchored to the bar',
+      text: 'Name, metadata keys, and the free-markdown notes — the same fields the hover card shows, now editable. Nothing schedule-related here: that lives on the pill and the bar.',
+      notes: [
+        '<b>Source</b> link jumps the code editor to this task\'s line / metadata block for anything the form doesn\'t cover.',
+        'Double-click on a bar is a shortcut to Edit (focus + edit in one gesture).',
+      ],
+    });
+    const t = base();
+    const L = G.render(h, { tasks: t, selected: SEL });
+    const b = L.bars.get(SEL);
+    G.place(h, G.editPopover(t.find((x) => x.id === SEL), notes), b.x, b.y + b.h + 10, { ax: 0, ay: 0 });
+    h.parentElement.style.paddingBottom = '290px';
+  }
+
+  // 7 — delete
+  {
+    const h = G.frame('#frames', {
+      step: 7,
+      title: 'Delete → instant, undoable, chain kept intact',
+      text: 'No "are you sure?" — undo is cheaper than a dialog. Successors don\'t fall off the chart: they inherit the deleted task\'s predecessors.',
+      notes: [
+        '<code>arch3</code> was <code>after dev3</code> → becomes <code>after arch2</code> and slides left. Its metadata block is deleted too.',
+        'Focus moves to the nearest successor (or predecessor), so repeated <kbd>Del</kbd> removes a run of tasks.',
+        '<b>Decision for you:</b> inherit predecessors (shown) vs. pin successors to their current dates (nothing moves).',
+      ],
+    });
+    const t = base().filter((x) => x.id !== SEL);
+    t.find((x) => x.id === 'arch3').after = ['arch2'];
+    const L = G.render(h, { tasks: t, selected: 'arch3' });
+    const b = L.bars.get('arch3');
+    G.place(h, G.pill({ link: { kind: 'after', names: ['arch2'] }, dur: '2' }), b.cx, b.y - 10);
+    G.toast(h, `${G.icon('trash', 14)} Deleted <b>SVG timeline &amp; bars</b> · arch3 now after arch2 <button>${G.icon('undo', 13)} Undo</button>`, L);
+  }
+</script>
+
+<h2>Keyboard map (while focused)</h2>
+<table class="cmp">
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>←</kbd> <kbd>→</kbd> · <kbd>⇧</kbd> = week</td><td>Move by a day (unlinks on first nudge)</td></tr>
+  <tr><td><kbd>+</kbd> <kbd>−</kbd> · digits</td><td>Step length · type exact length</td></tr>
+  <tr><td><kbd>A</kbd></td><td>Add task after</td></tr>
+  <tr><td><kbd>↵</kbd> · double-click</td><td>Edit</td></tr>
+  <tr><td><kbd>Del</kbd> / <kbd>⌫</kbd></td><td>Delete (undoable)</td></tr>
+  <tr><td><kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Tab</kbd></td><td>Focus previous / next task (row order)</td></tr>
+  <tr><td><kbd>⌘Z</kbd> / <kbd>⌘⇧Z</kbd></td><td>Undo / redo</td></tr>
+  <tr><td><kbd>Esc</kbd> · click empty</td><td>Leave focus mode</td></tr>
+</table>
+</body>
+</html>

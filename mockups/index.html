@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode — design mockups</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; max-width: 1100px; margin-top: 16px; }
+  .card { display: block; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-decoration: none; color: var(--fg); background: var(--panel-bg); }
+  .card:hover { border-color: var(--accent); }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card p { margin: 0; font-size: 13px; color: var(--fg-muted); }
+  .tag { font-size: 11px; font-weight: 700; color: var(--accent); }
+  ul.principles { font-size: 13.5px; max-width: 900px; }
+  ul.principles li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<h1>Focus mode — design mockups</h1>
+<p class="lead">Click a bar body (not the end edge) to focus a task. Functions: move (+ unlink), add-after, delete, edit, exact length. Open the files directly in a browser — no build needed. Toggle the theme top-right.</p>
+
+<div class="cards">
+  <a class="card" href="playground.html"><span class="tag">INTERACTIVE</span><h3>Playground (A)</h3><p>Clickable prototype of the recommended design. Drag, type, use shortcuts.</p></a>
+  <a class="card" href="variant-a.html"><span class="tag">RECOMMENDED</span><h3>A · Action pill</h3><p>Floating pill above the focused bar + direct manipulation on the bar. Storyboard of every flow.</p></a>
+  <a class="card" href="variant-b.html"><h3>B · Inspector panel</h3><p>Docked side panel with all properties and labelled actions.</p></a>
+  <a class="card" href="variant-c.html"><h3>C · On-bar handles</h3><p>Controls placed on the bar where their effect happens.</p></a>
+</div>
+
+<h2>Principles the designs follow</h2>
+<ul class="principles">
+  <li><b>Spatial things stay on the bar.</b> Move = drag the body; resize = drag the end edge (existing). No "move" button.</li>
+  <li><b>First click focuses, never mutates.</b> Only a focused bar is draggable, so a stray click can't shift the plan.</li>
+  <li><b>Show consequences before they happen.</b> A move that will cut an <code>after</code> link previews it (red dashed + scissors) during the drag.</li>
+  <li><b>Undo instead of confirm.</b> Delete/move/unlink are instant with an undo toast; no dialogs.</li>
+  <li><b>Every action has a key</b>, shown in its tooltip. Mouse-only and keyboard-only both work end to end.</li>
+  <li><b>Ask only for what can't be inferred.</b> Add-after needs just a name; section, length, position and id default.</li>
+</ul>
+
+<h2>Comparison</h2>
+<table class="cmp">
+  <tr><th></th><th>A · Pill</th><th>B · Inspector</th><th>C · Handles</th></tr>
+  <tr><td>Eye/mouse travel</td><td class="good">Minimal (next to bar)</td><td class="bad">High (bar ↔ panel)</td><td class="good">None</td></tr>
+  <tr><td>Discoverability</td><td class="good">Good (icons + tooltips + 1 label)</td><td class="good">Best (all labelled)</td><td class="meh">Weak for edit/delete</td></tr>
+  <tr><td>Short bars / zoomed out</td><td class="good">Unaffected (fixed size)</td><td class="good">Unaffected</td><td class="bad">Collides</td></tr>
+  <tr><td>Shows the link to cut</td><td class="good">Yes, chip with ✕</td><td class="good">Yes</td><td class="meh">Only in menu</td></tr>
+  <tr><td>Timeline space</td><td class="good">Overlay, no layout change</td><td class="bad">−300 px or reflow</td><td class="good">Overlay</td></tr>
+  <tr><td>Implementation</td><td class="good">1 Svelte overlay (reuses Floating-UI)</td><td class="meh">New pane in SplitPane</td><td class="meh">Many SVG hit-zones</td></tr>
+</table>
+
+<h2>Open decisions for you</h2>
+<ol class="principles">
+  <li><b>Delete with successors:</b> successors inherit the deleted task's predecessors (chain stays connected, things slide left) <i>or</i> successors get pinned to their current dates (nothing moves)?</li>
+  <li><b>Move a fan-in task</b> (<code>after a b</code>): cut all links (simple, shown) or keep them and only allow moving later (lag) — the format has no lag, so I'd cut all.</li>
+  <li><b>New task id:</b> auto-slug from the name (<code>hovercar12</code>) or sequential per section (<code>dev7</code>)?</li>
+  <li><b>Edit scope:</b> name + keys + notes in the popover (shown), or name only and "Source" for the rest?</li>
+  <li><b>Undo stack:</b> doesn't exist yet. The design leans on it (no confirms). Worth building as part of this feature.</li>
+</ol>
+</body>
+</html>

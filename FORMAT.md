@@ -58,7 +58,8 @@ This is where a plan stops being a chart and becomes a document. The schedule
 says *when*; the metadata block says *what, why, and what's unresolved*.
 
 - Heading: `## Task metadata: <id>` — the id must match a task. Optional; a task
-  with no block is fine.
+  with no block is fine. A block runs until the next `## Task metadata:` heading
+  (or the end of the file), so headings of any level are allowed inside it.
 - **The free markdown is the heart of it.** Everything below the key list is
   rich context — the rationale, notes, decisions, links, and open questions that
   give the task meaning. It's shown in the hover card and supports `**bold**`,

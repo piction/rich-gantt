@@ -1,11 +1,31 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { ParsedDocument, ScheduleResult, Task } from '../model/types';
   import type { ZoomLevel } from './scale';
   import { xToDay } from './scale';
-  import { workingDaysBetween } from '../compute/dateMath';
+  import {
+    workingDaysBetween,
+    fromEpochDay,
+    formatDayLabel,
+    isWeekend,
+  } from '../compute/dateMath';
   import { computeLayout, sourceAnchor, frontAnchor, type Bar, type SectionBand } from './layout';
   import { computeSchedule } from '../compute/scheduler';
-  import { setDuration, addDependency, canAddDependency } from '../interaction/barEdits';
+  import {
+    setDuration,
+    addDependency,
+    canAddDependency,
+    moveTask,
+    deleteTask,
+    addTaskAfter,
+    updateTask,
+    type NewTaskDraft,
+  } from '../interaction/barEdits';
+  import { ICONS } from '../ui/icons';
+  import FocusPill from '../ui/FocusPill.svelte';
+  import AddTaskPopover from '../ui/AddTaskPopover.svelte';
+  import TaskEditor from '../ui/TaskEditor.svelte';
+  import { floating } from '../ui/floating';
 
   export let doc: ParsedDocument;
   export let schedule: ScheduleResult;
@@ -21,6 +41,8 @@
   export let onSectionLeave: () => void = () => {};
   // Called when a drag gesture commits a mutated document.
   export let onEdit: (doc: ParsedDocument) => void = () => {};
+  // Focus-mode editor's "Source" link: reveal this 1-based source line in the code editor.
+  export let onJumpToSource: (line: number) => void = () => {};
 
   let svgEl: SVGSVGElement;
 
@@ -48,9 +70,36 @@
   const DOT_R = 4; // radius of the connector dots
   const TARGET_R = 14; // hit radius when snapping a dropped edge to a front dot
 
-  $: renderDoc = previewDoc ?? doc;
+  // Focus mode: a clicked bar body is selected and gets the action pill. `mode` is the open
+  // popover (add-after / edit). Body-dragging a selected bar moves it (`move`), which pins it to
+  // an absolute date and so breaks its `after` links — previewed as cut arrows before release.
+  let selectedId: string | null = null;
+  let mode: 'add' | 'edit' | null = null;
+  let move: {
+    id: string;
+    x0: number;
+    grab: number; // pointer day − bar start day, so the bar doesn't jump under the cursor
+    origStart: number; // whole start day before the move
+    origAfter: string[];
+    origin: { x: number; y: number; w: number; h: number };
+    moved: boolean;
+  } | null = null;
+  let durPreview: number | null = null; // length being typed into the pill
+  let addDraft: NewTaskDraft = { label: '', duration: 1, section: '' };
+  let pill: FocusPill;
+  let ringEl: SVGRectElement | null = null;
+  let barEls: Record<string, SVGGElement | null> = {};
+  const DRAG_THRESHOLD = 4; // px before a press on a selected bar becomes a move
+
+  $: selectedTask = selectedId ? doc.tasks.get(selectedId) ?? null : null;
+  $: addPreview =
+    mode === 'add' && selectedId ? addTaskAfter(doc, selectedId, addDraft) : null;
+  $: focusPreview =
+    addPreview?.doc ??
+    (durPreview !== null && selectedId ? setDuration(doc, selectedId, durPreview) : null);
+  $: renderDoc = previewDoc ?? focusPreview ?? doc;
   $: excluded = renderDoc.excludeWeekends;
-  $: renderSchedule = previewDoc ? computeSchedule(previewDoc) : schedule;
+  $: renderSchedule = renderDoc === doc ? schedule : computeSchedule(renderDoc);
   $: layout = computeLayout(renderDoc, renderSchedule, zoom, colorKey, weekendDayScale);
 
   // Labels are drawn inside the bar, colored to contrast the fill. A label that doesn't fit is
@@ -137,6 +186,14 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
+    if (move) {
+      if (!move.moved && Math.abs(e.clientX - move.x0) < DRAG_THRESHOLD) return;
+      move.moved = true;
+      const start = Math.round(pointerDay(e) - move.grab);
+      // Dropping back on the original day is a cancel (and keeps any `after` link).
+      previewDoc = start === move.origStart ? null : moveTask(doc, move.id, fromEpochDay(start));
+      return;
+    }
     if (connect) {
       const p = pointerPoint(e);
       connect = { ...connect, x: p.x, y: p.y, targetId: frontHit(p, connect.fromId) };
@@ -151,6 +208,14 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (move) {
+      const committed = previewDoc;
+      svgEl.releasePointerCapture?.(e.pointerId);
+      move = null;
+      previewDoc = null;
+      if (committed) onEdit(committed);
+      return;
+    }
     if (connect) {
       const { fromId, targetId } = connect;
       svgEl.releasePointerCapture?.(e.pointerId);
@@ -181,13 +246,216 @@
   }
 
   const edgeW = (b: Bar) => Math.min(EDGE, Math.max(2, b.w / 3));
+
+  // --- Focus mode ---
+
+  // Drop the selection when its task disappears (deleted here or edited away in the source).
+  $: pruneSelection(doc);
+  function pruneSelection(d: ParsedDocument): void {
+    if (selectedId && !d.tasks.has(selectedId)) clearFocus();
+  }
+
+  // Predecessors and successors of the selection stay legible; everything else fades.
+  $: related = relatedTo(renderDoc, selectedId);
+  function relatedTo(d: ParsedDocument, id: string | null): Set<string> {
+    const out = new Set<string>();
+    if (!id) return out;
+    const t = d.tasks.get(id);
+    if (t?.position.kind === 'after') t.position.ids.forEach((p) => out.add(p));
+    for (const o of d.tasks.values()) {
+      if (o.position.kind === 'after' && o.position.ids.includes(id)) out.add(o.id);
+    }
+    return out;
+  }
+
+  function sectionOf(id: string): string {
+    return doc.sections.find((s) => s.taskIds.includes(id))?.name ?? '';
+  }
+
+  function select(id: string): void {
+    selectedId = id;
+    mode = null;
+    durPreview = null;
+    onBarLeave(); // the pill replaces the hover card
+  }
+
+  function clearFocus(): void {
+    selectedId = null;
+    mode = null;
+    durPreview = null;
+  }
+
+  function startOf(id: string): number {
+    return Math.floor(schedule.tasks.get(id)?.startDay ?? 0);
+  }
+
+  /** `day` shifted by n days; in working-day mode weekends are skipped so a nudge never stalls. */
+  function shiftDay(day: number, n: number): number {
+    if (!doc.excludeWeekends) return day + n;
+    const dir = Math.sign(n);
+    let d = day;
+    for (let left = Math.abs(n); left > 0; ) {
+      d += dir;
+      if (!isWeekend(d)) left--;
+    }
+    return d;
+  }
+
+  function onBarPointerDown(e: PointerEvent, id: string): void {
+    if (e.button !== 0 || id === addPreview?.id) return;
+    if (id !== selectedId) {
+      select(id); // first click only focuses — it never moves anything
+      return;
+    }
+    const bar = layout.barsById.get(id);
+    const task = doc.tasks.get(id);
+    if (!bar || !task) return;
+    mode = null;
+    move = {
+      id,
+      x0: e.clientX,
+      grab: pointerDay(e) - startOf(id),
+      origStart: startOf(id),
+      origAfter: task.position.kind === 'after' ? [...task.position.ids] : [],
+      origin: { x: bar.x, y: bar.y, w: bar.w, h: bar.h },
+      moved: false,
+    };
+    svgEl.setPointerCapture(e.pointerId);
+  }
+
+  function onBackgroundPointerDown(e: PointerEvent): void {
+    if (!(e.target as Element).closest('.bar')) clearFocus();
+  }
+
+  function unlink(): void {
+    if (selectedId) onEdit(moveTask(doc, selectedId, fromEpochDay(startOf(selectedId))));
+  }
+
+  function nudge(days: number): void {
+    if (!selectedId) return;
+    onEdit(moveTask(doc, selectedId, fromEpochDay(shiftDay(startOf(selectedId), days))));
+  }
+
+  function setLength(days: number): void {
+    durPreview = null;
+    if (selectedId) onEdit(setDuration(doc, selectedId, days));
+  }
+
+  function openAdd(): void {
+    if (!selectedTask) return;
+    addDraft = {
+      label: '',
+      duration: selectedTask.duration || 1, // a milestone's 0d is no useful default
+      section: sectionOf(selectedTask.id),
+    };
+    mode = 'add';
+  }
+
+  async function createTask(chain: boolean): Promise<void> {
+    if (!addPreview) return;
+    const { doc: next, id } = addPreview;
+    onEdit(next);
+    select(id);
+    if (!chain) return;
+    await tick(); // let the committed doc flow back in before reading the new task
+    openAdd();
+  }
+
+  function removeSelected(): void {
+    if (!selectedId) return;
+    const id = selectedId;
+    const task = doc.tasks.get(id);
+    const succ = doc.order.find((o) => {
+      const p = doc.tasks.get(o)?.position;
+      return p?.kind === 'after' && p.ids.includes(id);
+    });
+    const next = succ ?? (task?.position.kind === 'after' ? task.position.ids[0] : null);
+    onEdit(deleteTask(doc, id, (sid) => fromEpochDay(startOf(sid))));
+    if (next) select(next);
+    else clearFocus();
+  }
+
+  function onKeydown(e: KeyboardEvent): void {
+    const el = e.target as HTMLElement;
+    if (el.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || drag || connect || move) return;
+    // A keyboard-focused bar (Tab) is selected with Enter.
+    const barId = el.closest?.('.bar')?.getAttribute('data-id');
+    if (!selectedId) {
+      if (barId && e.key === 'Enter') {
+        e.preventDefault();
+        select(barId);
+      }
+      return;
+    }
+    if (mode) return;
+    if (e.key === 'Enter' && el.tagName === 'BUTTON') return; // let the button activate
+    const k = e.key;
+    const order = layout.bars.map((b) => b.id);
+    const at = order.indexOf(selectedId);
+    const resizable = selectedTask?.kind !== 'milestone';
+    if (/^[0-9]$/.test(k) && resizable) pill?.startDurationEdit(k);
+    else if ((k === '+' || k === '=') && resizable && selectedTask)
+      setLength(selectedTask.duration + 1);
+    else if (k === '-' && resizable && selectedTask)
+      setLength(Math.max(0.5, selectedTask.duration - 1));
+    else if (k === 'ArrowLeft') nudge(e.shiftKey ? (doc.excludeWeekends ? -5 : -7) : -1);
+    else if (k === 'ArrowRight') nudge(e.shiftKey ? (doc.excludeWeekends ? 5 : 7) : 1);
+    else if (k === 'ArrowDown') select(order[Math.min(order.length - 1, at + 1)]);
+    else if (k === 'ArrowUp') select(order[Math.max(0, at - 1)]);
+    else if (k === 'a' || k === 'A') openAdd();
+    else if (k === 'Enter') mode = 'edit';
+    else if (k === 'Delete' || k === 'Backspace') removeSelected();
+    else if (k === 'Escape') clearFocus();
+    else return;
+    e.preventDefault();
+  }
+
+  // Cut-link preview while moving a dependent bar: the predecessor's edge drawn dashed red,
+  // with a scissors badge on it.
+  $: cutLinks =
+    move?.moved && previewDoc
+      ? move.origAfter.flatMap((from) => {
+          const a = layout.barsById.get(from);
+          const b = move && layout.barsById.get(move.id);
+          if (!a || !b) return [];
+          const s = sourceAnchor(a, b.cy < a.cy ? 'top' : 'bottom');
+          const t = frontAnchor(b);
+          const vertical = Math.abs(t.y - s.y) > 24;
+          return [
+            {
+              d: `M ${s.x},${s.y} V ${t.y} H ${t.x}`,
+              cx: vertical ? s.x : (s.x + t.x) / 2,
+              cy: vertical ? (s.y + t.y) / 2 : t.y,
+            },
+          ];
+        })
+      : [];
+
+  $: moveReadout = move?.moved && selectedId ? readout(renderSchedule, selectedId) : '';
+  function readout(sched: ScheduleResult, id: string): string {
+    const s = sched.tasks.get(id);
+    if (!s || !move) return '';
+    const delta = Math.floor(s.startDay) - move.origStart;
+    const span = `${formatDayLabel(s.startDay)} → ${formatDayLabel(s.endDay - 1e-9)}`;
+    return `${span} · ${delta >= 0 ? '+' : ''}${delta}d`;
+  }
 </script>
 
-<div class="timeline-scroll" on:scroll={(e) => (scrollLeft = e.currentTarget.scrollLeft)}>
+<svelte:window on:keydown={onKeydown} />
+
+<!-- svelte-ignore a11y-no-static-element-interactions -->
+<div
+  class="timeline-scroll"
+  on:scroll={(e) => (scrollLeft = e.currentTarget.scrollLeft)}
+  on:pointerdown={onBackgroundPointerDown}
+>
   <svg
     class="timeline"
     class:dragging={drag !== null}
     class:connecting={connect !== null}
+    class:focusing={selectedId !== null}
+    class:moving={move?.moved}
     bind:this={svgEl}
     width={layout.width}
     height={layout.height}
@@ -200,6 +468,12 @@
     <defs>
       <marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
         <path d="M0,0 L6,3 L0,6 Z" class="arrowhead" />
+      </marker>
+      <marker id="arrowhead-focus" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" class="arrowhead focus" />
+      </marker>
+      <marker id="arrowhead-cut" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" class="arrowhead cut" />
       </marker>
     </defs>
 
@@ -244,15 +518,36 @@
     <g class="bars">
       {#each layout.bars as bar (bar.id)}
         {@const task = renderDoc.tasks.get(bar.id)}
+        {@const isGhost = bar.id === addPreview?.id}
         <g
           class="bar"
+          class:selected={bar.id === selectedId}
+          class:related={related.has(bar.id)}
+          class:ghost={isGhost}
+          data-id={bar.id}
           role="button"
           tabindex="0"
-          on:mouseenter={(e) => task && !drag && onBarEnter(task, e.currentTarget)}
+          bind:this={barEls[bar.id]}
+          on:pointerdown={(e) => onBarPointerDown(e, bar.id)}
+          on:dblclick={() => bar.id === selectedId && (mode = 'edit')}
+          on:mouseenter={(e) =>
+            task && !drag && !move && bar.id !== selectedId && !isGhost && onBarEnter(task, e.currentTarget)}
           on:mouseleave={onBarLeave}
-          on:focus={(e) => task && onBarEnter(task, e.currentTarget)}
+          on:focus={(e) => task && bar.id !== selectedId && !isGhost && onBarEnter(task, e.currentTarget)}
           on:blur={onBarLeave}
         >
+          {#if bar.id === selectedId}
+            {@const r = bar.isMilestone ? bar.h / 2 : 0}
+            <rect
+              bind:this={ringEl}
+              x={(bar.isMilestone ? bar.cx - r : bar.x) - 3.5}
+              y={bar.y - 3.5}
+              width={(bar.isMilestone ? 2 * r : bar.w) + 7}
+              height={bar.h + 7}
+              rx="6"
+              class="focus-ring"
+            />
+          {/if}
           {#if bar.isMilestone}
             <path
               d={milestonePath(bar)}
@@ -351,7 +646,14 @@
     <!-- dependency arrows on top -->
     <g class="arrows">
       {#each layout.arrows as arrow}
-        <path d={arrow.d} class="arrow" marker-end="url(#arrowhead)" />
+        {@const hot = selectedId !== null && (arrow.from === selectedId || arrow.to === selectedId)}
+        <path
+          d={arrow.d}
+          class="arrow"
+          class:focus={hot}
+          class:ghost={arrow.to === addPreview?.id}
+          marker-end={hot ? 'url(#arrowhead-focus)' : 'url(#arrowhead)'}
+        />
       {/each}
     </g>
 
@@ -368,6 +670,27 @@
       {/each}
     </g>
 
+    <!-- focus mode: where a moved bar came from, and the links the move will cut -->
+    {#if move?.moved && previewDoc}
+      <rect
+        x={move.origin.x}
+        y={move.origin.y}
+        width={move.origin.w}
+        height={move.origin.h}
+        rx="3"
+        class="move-origin"
+      />
+      {#each cutLinks as cut}
+        <path d={cut.d} class="cut-link" marker-end="url(#arrowhead-cut)" />
+        <g class="cut-badge" transform={`translate(${cut.cx - 9},${cut.cy - 9})`}>
+          <circle cx="9" cy="9" r="9" />
+          <g transform="translate(3,3) scale(0.5)">
+            {#each ICONS.scissors as d}<path {d} />{/each}
+          </g>
+        </g>
+      {/each}
+    {/if}
+
     <!-- rubber-band line while drawing a new dependency -->
     {#if connect}
       <path
@@ -379,6 +702,53 @@
     {/if}
   </svg>
 </div>
+
+{#if selectedTask && !move?.moved && !mode}
+  <FocusPill
+    bind:this={pill}
+    task={selectedTask}
+    anchor={ringEl}
+    startLabel={formatDayLabel(startOf(selectedTask.id))}
+    excludeWeekends={doc.excludeWeekends}
+    onUnlink={unlink}
+    onPreviewDuration={(d) => (durPreview = d)}
+    onSetDuration={setLength}
+    onAdd={openAdd}
+    onEdit={() => (mode = 'edit')}
+    onDelete={removeSelected}
+  />
+{/if}
+{#if moveReadout}
+  <div class="move-readout" use:floating={{ anchor: ringEl, placement: 'top' }}>
+    {moveReadout}{#if move?.origAfter.length && previewDoc}&nbsp;·
+      <span class="warn">unlinks {move.origAfter.join(', ')}</span>{/if}
+  </div>
+{/if}
+{#if selectedTask && mode === 'add' && addPreview}
+  <AddTaskPopover
+    afterLabel={selectedTask.label}
+    bind:draft={addDraft}
+    sections={doc.sections.map((s) => s.name)}
+    anchor={barEls[addPreview.id] ?? null}
+    onCreate={createTask}
+    onCancel={() => (mode = null)}
+  />
+{/if}
+{#if selectedTask && mode === 'edit'}
+  <TaskEditor
+    task={selectedTask}
+    anchor={ringEl}
+    onSave={(edit) => {
+      if (selectedId) onEdit(updateTask(doc, selectedId, edit));
+      mode = null;
+    }}
+    onCancel={() => (mode = null)}
+    onJumpToSource={() => {
+      if (selectedTask) onJumpToSource(selectedTask.sourceLine);
+      mode = null;
+    }}
+  />
+{/if}
 
 <style>
   .timeline-scroll {
@@ -526,6 +896,116 @@
     stroke-width: 1.5;
     stroke-dasharray: 4 3;
     pointer-events: none;
+  }
+  /* --- focus mode --- */
+  .bar {
+    transition: opacity 0.18s ease;
+  }
+  .timeline.focusing .bar:not(.selected):not(.related):not(.ghost) {
+    opacity: 0.32;
+  }
+  .timeline.focusing .bar.related {
+    opacity: 0.85;
+  }
+  .timeline.focusing .arrow:not(.focus):not(.ghost),
+  .timeline.focusing .junction-chevron,
+  .timeline.focusing .junction-gap {
+    opacity: 0.3;
+  }
+  .bar-rect,
+  .milestone {
+    cursor: pointer;
+  }
+  /* the focus ring marks the selection; drop the hover outline under it */
+  .bar.selected .bar-rect,
+  .bar.selected .milestone {
+    stroke: var(--bar-stroke);
+    stroke-width: 1;
+    cursor: grab;
+    filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.25));
+  }
+  .timeline.moving,
+  .timeline.moving .bar-rect {
+    cursor: grabbing;
+  }
+  .bar.selected:focus {
+    outline: none;
+  }
+  .focus-ring {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    pointer-events: none;
+  }
+  .bar.ghost {
+    pointer-events: none;
+  }
+  .bar.ghost .bar-rect {
+    fill: var(--accent-soft) !important;
+    stroke: var(--accent);
+    stroke-dasharray: 4 3;
+  }
+  .bar.ghost .bar-label {
+    fill: var(--accent) !important;
+    font-style: italic;
+  }
+  .arrow.focus {
+    stroke: var(--accent);
+    stroke-width: 2;
+  }
+  .arrow.ghost {
+    stroke: var(--accent);
+    stroke-dasharray: 4 3;
+  }
+  .arrowhead.focus {
+    fill: var(--accent);
+  }
+  .arrowhead.cut {
+    fill: var(--danger);
+  }
+  .move-origin {
+    fill: none;
+    stroke: var(--fg-muted);
+    stroke-dasharray: 3 3;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .cut-link {
+    fill: none;
+    stroke: var(--danger);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 4;
+    pointer-events: none;
+  }
+  .cut-badge {
+    pointer-events: none;
+  }
+  .cut-badge circle {
+    fill: var(--surface);
+    stroke: var(--danger);
+    stroke-width: 1.5;
+  }
+  .cut-badge path {
+    fill: none;
+    stroke: var(--danger);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+  }
+  .move-readout {
+    position: fixed;
+    z-index: 20;
+    background: var(--fg);
+    color: var(--bg);
+    border-radius: 7px;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+  .move-readout .warn {
+    color: var(--error-border);
   }
   .connect-line.snapped {
     stroke-dasharray: none;

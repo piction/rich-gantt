@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode · C — On-bar handles</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  .handle { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); cursor: pointer; color: var(--fg-muted); }
+  .handle.add { width: 24px; height: 24px; background: var(--accent); color: #fff; border: 0; }
+  .handle.del:hover { color: var(--danger); }
+  .durtag { background: var(--surface); border: 1.5px solid var(--accent); border-radius: 6px; padding: 1px 6px; font: 600 12px system-ui; font-variant-numeric: tabular-nums; box-shadow: var(--shadow); }
+  .grip { color: var(--fg-muted); cursor: grab; }
+  .menu { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow); padding: 4px; font-size: 12.5px; width: 190px; }
+  .menu div { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; }
+  .menu div:hover { background: var(--kbd-bg); }
+  .menu kbd { margin-left: auto; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>C · On-bar handles</h1>
+<p class="lead">
+  Controls live <i>on and around the bar</i> exactly where their effect happens: a <b>+</b> knob at
+  the bar's end (where a successor attaches), a length tag at the end edge, a grip on the left for
+  moving, and a ✕ in the corner. Edit is double-click / <kbd>↵</kbd> or the ⋯ menu. Most spatial —
+  and most crowded on short bars.
+</p>
+<div id="frames"></div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const SEL = 'dev3';
+
+  {
+    const h = G.frame('#frames', {
+      step: 1, title: 'Click → handles appear around the bar',
+      text: 'Each handle sits at the spot it affects. No toolbar to read.',
+      notes: ['<b>+</b> Zero travel: + knob is literally where the next task will start; length tag rides on the end edge you\'d drag anyway.',
+              '<b>−</b> On 1–2 day bars (or at week/month zoom) the handles overlap neighbours and the label. Needs a fallback anyway.',
+              '<b>−</b> Unlinking is implicit only (via move) — no visible place to show/cut the link without adding another handle.',
+              '<b>−</b> Edit and Delete are less discoverable (hidden in ⋯ / corner ✕).'],
+    });
+    const L = G.render(h, { tasks: G.sample(), selected: SEL });
+    const b = L.bars.get(SEL);
+    G.place(h, `<span class="grip">${G.icon('grip', 14)}</span>`, b.x - 4, b.cy, { ax: -1, ay: -0.5 });
+    G.place(h, `<span class="durtag">5d</span>`, b.x + b.w, b.y - 6, { ax: -0.5, ay: -1 });
+    G.place(h, `<span class="handle add">${G.icon('plus', 15)}</span>`, b.x + b.w + 8, b.cy, { ax: 0, ay: -0.5 });
+    G.place(h, `<span class="handle del">${G.icon('x', 12)}</span>`, b.x - 2, b.y - 2, { ax: -0.5, ay: -0.5 });
+    G.place(h, `<span class="handle">${G.icon('more', 14)}</span>`, b.cx, b.y + b.h + 6, { ax: -0.5, ay: 0 });
+  }
+  {
+    const h = G.frame('#frames', {
+      step: 2, title: '⋯ menu for the rest',
+      text: 'Edit / Unlink / Source live in a small menu below the bar.',
+    });
+    const L = G.render(h, { tasks: G.sample(), selected: SEL });
+    const b = L.bars.get(SEL);
+    G.place(h, `<div class="menu">
+      <div>${G.icon('pencil', 14)} Edit <kbd>↵</kbd></div>
+      <div>${G.icon('unlink', 14)} Unlink from arch2</div>
+      <div>${G.icon('code', 14)} Show in source</div>
+      <div style="color:var(--danger)">${G.icon('trash', 14)} Delete <kbd>Del</kbd></div></div>`, b.cx, b.y + b.h + 6, { ax: -0.5, ay: 0 });
+    h.parentElement.style.paddingBottom = '120px';
+  }
+  {
+    const h = G.frame('#frames', {
+      step: 3, title: 'Problem case: short bar at week zoom',
+      text: 'arch3 is 2 days (56 px here; ~16 px at week zoom). Handles collide with the label and the next row.',
+    });
+    const L = G.render(h, { tasks: G.sample(), selected: 'arch3' });
+    const b = L.bars.get('arch3');
+    G.place(h, `<span class="grip">${G.icon('grip', 14)}</span>`, b.x - 4, b.cy, { ax: -1, ay: -0.5 });
+    G.place(h, `<span class="durtag">2d</span>`, b.x + b.w, b.y - 6, { ax: -0.5, ay: -1 });
+    G.place(h, `<span class="handle add">${G.icon('plus', 15)}</span>`, b.x + b.w + 8, b.cy, { ax: 0, ay: -0.5 });
+    G.place(h, `<span class="handle del">${G.icon('x', 12)}</span>`, b.x - 2, b.y - 2, { ax: -0.5, ay: -0.5 });
+    G.place(h, `<span class="handle">${G.icon('more', 14)}</span>`, b.cx, b.y + b.h + 6, { ax: -0.5, ay: 0 });
+  }
+</script>
+</body>
+</html>

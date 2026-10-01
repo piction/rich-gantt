@@ -26,8 +26,6 @@ const FENCE_CLOSE_RE = /^\s*```+\s*$/;
 // A metadata block is opened by this heading; its id is everything after the colon. A space
 // before the colon is tolerated (`## Task metadata : id`).
 const META_HEADING_RE = /^\s{0,3}##\s+Task metadata\s*:\s*(\S.*?)\s*$/;
-// Any level-1/2 ATX heading ends the current block (level-3+ stays inside the body).
-const HEADING_RE = /^\s{0,3}#{1,2}\s+/;
 // A fenced code-block delimiter (``` or ~~~, optional info string). Lines inside a fence are
 // literal content — headings, `#` comments, and even a `## Task metadata:` line there must NOT
 // be treated as structure, so we toggle fence state and skip the heading check while inside one.
@@ -80,14 +78,15 @@ function extractMetadataBlocks(lines: string[], startIndex: number): MetadataBlo
     const id = m[1].trim();
     const headerLineNo = i + 1;
 
-    // Collect body lines up to the next level-1/2 heading, but keep fenced code intact: a
-    // heading-looking line inside a ``` fence is literal content, not a block boundary.
+    // Collect body lines up to the next metadata heading — any other heading (`#`, `##`, …) is
+    // part of the free markdown. Fenced code stays intact: a heading-looking line inside a ```
+    // fence is literal content, not a block boundary.
     const bodyLines: SourceLine[] = [];
     let j = i + 1;
     let bodyFence = false;
     while (j < lines.length) {
       if (FENCE_RE.test(lines[j])) bodyFence = !bodyFence;
-      else if (!bodyFence && HEADING_RE.test(lines[j])) break;
+      else if (!bodyFence && META_HEADING_RE.test(lines[j])) break;
       bodyLines.push({ text: lines[j], lineNo: j + 1 });
       j++;
     }

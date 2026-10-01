@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode · Playground (variant A)</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  #stage-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--timeline-bg); padding: 70px 0 260px; }
+  .bar.selected { cursor: grab; }
+  .stage.dragging, .stage.dragging .bar { cursor: grabbing; }
+  .cheat { font-size: 12px; color: var(--fg-muted); margin: 10px 0 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>Playground — variant A</h1>
+<p class="lead">Fully clickable. Click a bar, drag it, type digits, press <kbd>A</kbd>, <kbd>↵</kbd>, <kbd>Del</kbd>, <kbd>⌘Z</kbd>. (Mock data only — nothing is saved.)</p>
+<div class="cheat">
+  <span><kbd>click</kbd> focus</span><span><kbd>drag</kbd> move</span><span><kbd>←</kbd><kbd>→</kbd> nudge (<kbd>⇧</kbd> week)</span>
+  <span><kbd>0-9</kbd> length</span><span><kbd>+</kbd><kbd>−</kbd> step</span><span><kbd>A</kbd> add after</span>
+  <span><kbd>↵</kbd>/dbl-click edit</span><span><kbd>Del</kbd> delete</span><span><kbd>↑</kbd><kbd>↓</kbd> next task</span>
+  <span><kbd>⌘Z</kbd> undo</span><span><kbd>Esc</kbd> exit</span>
+</div>
+<div id="stage-wrap"><div id="stage"></div></div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const host = document.getElementById('stage');
+
+  let tasks = G.sample();
+  let sel = null;
+  let history = [];
+  let mode = null;   // null | 'dur' | 'add' | 'edit'
+  let durBuf = '';
+  let drag = null;   // {id, x0, origStart, origAfter, moved, origin}
+  let toastMsg = null, toastTimer;
+  let addDur = 3, addName = '';
+  let L;
+
+  const byId = (id) => tasks.find((t) => t.id === id);
+  const clone = () => tasks.map((t) => ({ ...t, after: [...t.after] }));
+  function commit(msg) { toast(msg); }
+  function snapshot() { history.push(clone()); if (history.length > 50) history.shift(); }
+  function toast(msg) { toastMsg = msg; clearTimeout(toastTimer); if (msg) toastTimer = setTimeout(() => { toastMsg = null; draw(); }, 5000); }
+
+  function undo() {
+    if (!history.length) return;
+    tasks = history.pop();
+    if (sel && !byId(sel)) sel = null;
+    mode = null;
+    toast('Undone');
+    draw();
+  }
+
+  function draw() {
+    const t = sel && byId(sel);
+    let broken = [];
+    let preview = tasks;
+    if (mode === 'dur' && t && durBuf) {
+      preview = clone();
+      preview.find((x) => x.id === sel).dur = Math.max(0.5, parseFloat(durBuf) || t.dur);
+    }
+    if (mode === 'add' && t) {
+      preview = clone();
+      const i = preview.findIndex((x) => x.id === sel);
+      preview.splice(i + 1, 0, { id: '__ghost', label: addName || 'New task', section: t.section, dur: addDur, after: [sel], ghost: true });
+    }
+    if (drag && drag.moved && drag.origAfter.length) broken = drag.origAfter.map((p) => ({ from: p, to: drag.id }));
+    host.querySelector('.layer-ui')?.replaceChildren();
+    L = G.render(host, { tasks: preview, selected: sel, origin: drag?.moved ? drag.origin : null, broken });
+    host.classList.toggle('dragging', !!drag?.moved);
+    if (!t) return drawToast();
+    const b = L.bars.get(sel);
+
+    if (drag?.moved) {
+      const delta = b.start - drag.origStartDay;
+      G.place(host, `<div class="readout">${G.fmtDay(b.start)} → ${G.fmtDay(b.end - 1)} · <b>${delta >= 0 ? '+' : ''}${delta}d</b>${drag.origAfter.length ? ` · <span class="warn">unlinks ${drag.origAfter.join(', ')}</span>` : ''}</div>`, b.cx, b.y - 10);
+      return;
+    }
+
+    const link = t.after.length ? { kind: 'after', names: t.after } : { kind: 'date', text: G.fmtDay(b.start) };
+    const pill = G.place(host, G.pill({ link, dur: mode === 'dur' ? durBuf : String(t.dur), editing: mode === 'dur' }), b.cx, b.y - 10);
+    pill.addEventListener('pointerdown', (e) => e.stopPropagation());
+    pill.addEventListener('click', onPillClick);
+    pill.addEventListener('wheel', (e) => { if (e.target.closest('.stepper')) { e.preventDefault(); stepDur(e.deltaY < 0 ? 1 : -1); } }, { passive: false });
+
+    if (mode === 'add') {
+      const g = L.bars.get('__ghost');
+      const el = G.place(host, G.addPopover({ after: t.label, name: addName, dur: addDur, section: t.section }), g.x, g.y + g.h + 10, { ax: 0, ay: 0 });
+      wirePopover(el);
+      const inp = el.querySelector('input.name');
+      inp.focus(); inp.setSelectionRange(addName.length, addName.length);
+      inp.addEventListener('input', () => { addName = inp.value; const lb = host.querySelector('[data-id=__ghost] .bar-label'); if (lb) lb.textContent = addName || 'New task'; });
+      el.addEventListener('click', (e) => {
+        const d = e.target.closest('[data-dur]');
+        if (d) { addDur = +d.dataset.dur; draw(); }
+        if (e.target.closest('[data-act=create]')) createTask(false);
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); createTask(e.shiftKey); }
+        if (e.key === 'Escape') { mode = null; draw(); }
+        e.stopPropagation();
+      });
+    }
+    if (mode === 'edit') {
+      const el = G.place(host, G.editPopover(t, t.notes ?? 'Free markdown notes for this task…'), b.x, b.y + b.h + 10, { ax: 0, ay: 0 });
+      wirePopover(el);
+      const inp = el.querySelector('input.name');
+      inp.focus(); inp.select();
+      const save = () => { snapshot(); t.label = inp.value || t.label; t.notes = el.querySelector('textarea').value; mode = null; commit('Saved'); draw(); };
+      el.querySelector('[data-act=save]').onclick = save;
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { mode = null; draw(); }
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || e.target === inp)) { e.preventDefault(); save(); }
+        e.stopPropagation();
+      });
+    }
+    drawToast();
+  }
+
+  function wirePopover(el) { el.addEventListener('pointerdown', (e) => e.stopPropagation()); }
+
+  function drawToast() {
+    if (!toastMsg) return;
+    const el = G.toast(host, `${toastMsg} ${history.length ? `<button data-undo>${G.icon('undo', 13)} Undo</button>` : ''}`, L);
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.querySelector('[data-undo]')?.addEventListener('click', undo);
+  }
+
+  function onPillClick(e) {
+    const a = e.target.closest('[data-act]')?.dataset.act;
+    if (!a) return;
+    if (a === 'inc') stepDur(1);
+    if (a === 'dec') stepDur(-1);
+    if (a === 'dur') { mode = 'dur'; durBuf = ''; draw(); }
+    if (a === 'add') openAdd();
+    if (a === 'edit') { mode = 'edit'; draw(); }
+    if (a === 'delete') del();
+    if (a === 'unlink') unlink();
+  }
+
+  function stepDur(d) {
+    const t = byId(sel);
+    snapshot();
+    t.dur = Math.max(1, t.dur + d);
+    mode = null;
+    commit(`Length ${t.dur}d`);
+    draw();
+  }
+  function unlink() {
+    const t = byId(sel);
+    const start = L.sch.get(sel).start;
+    snapshot();
+    const was = t.after.join(', ');
+    t.after = []; t.start = start;
+    commit(`${G.icon('unlink', 14)} Unlinked from <b>${was}</b>`);
+    draw();
+  }
+  function openAdd() { const t = byId(sel); mode = 'add'; addName = ''; addDur = [1, 2, 3, 5, 10].includes(t.dur) ? t.dur : 3; draw(); }
+  function createTask(chain) {
+    const t = byId(sel);
+    snapshot();
+    const id = (addName || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8) + Math.floor(Math.random() * 90 + 10);
+    const i = tasks.findIndex((x) => x.id === sel);
+    tasks.splice(i + 1, 0, { id, label: addName || 'New task', section: t.section, dur: addDur, after: [sel], type: t.type });
+    sel = id;
+    commit(`Created <b>${G.esc(addName || 'New task')}</b>`);
+    if (chain) openAdd(); else { mode = null; draw(); }
+  }
+  function del() {
+    const t = byId(sel);
+    snapshot();
+    const succ = tasks.filter((x) => x.after.includes(sel));
+    for (const s of succ) s.after = [...new Set([...s.after.filter((p) => p !== sel), ...t.after])];
+    if (succ.some((s) => !s.after.length)) succ.forEach((s) => { if (!s.after.length) s.start = L.sch.get(s.id).start; });
+    tasks = tasks.filter((x) => x.id !== sel);
+    sel = succ[0]?.id ?? t.after[0] ?? null;
+    mode = null;
+    commit(`${G.icon('trash', 14)} Deleted <b>${G.esc(t.label)}</b>`);
+    draw();
+  }
+  function nudge(days) {
+    const t = byId(sel);
+    const start = L.sch.get(sel).start;
+    snapshot();
+    const was = t.after.join(', ');
+    t.after = []; t.start = Math.max(0, start + days);
+    commit(was ? `${G.icon('unlink', 14)} Unlinked from <b>${was}</b> · moved ${days > 0 ? '+' : ''}${days}d` : `Moved ${days > 0 ? '+' : ''}${days}d`);
+    draw();
+  }
+
+  // pointer: click to focus, drag focused bar to move
+  host.addEventListener('pointerdown', (e) => {
+    const g = e.target.closest('.bar');
+    if (!g || g.classList.contains('ghost')) { if (sel) { sel = null; mode = null; draw(); } return; }
+    const id = g.dataset.id;
+    if (id !== sel) { sel = id; mode = null; draw(); return; }
+    if (mode) { mode = null; }
+    const b = L.bars.get(id), t = byId(id);
+    drag = { id, x0: e.clientX, origStartDay: b.start, origAfter: [...t.after], snap: clone(), moved: false, origin: { x: b.x, y: b.y, w: b.w, h: b.h } };
+    host.setPointerCapture(e.pointerId);
+  });
+  host.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x0;
+    if (!drag.moved && Math.abs(dx) < 4) return;
+    drag.moved = true;
+    const step = e.altKey ? 0.5 : 1;
+    const days = Math.round(dx / G.PX / step) * step;
+    const t = byId(drag.id);
+    t.after = []; t.start = Math.max(0, drag.origStartDay + days);
+    // dropping back on the origin restores the link
+    if (days === 0) t.after = [...drag.origAfter];
+    draw();
+  });
+  host.addEventListener('pointerup', () => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.moved) {
+      const t = byId(d.id);
+      const days = L.sch.get(d.id).start - d.origStartDay;
+      if (days === 0) { tasks = d.snap; }
+      else {
+        history.push(d.snap);
+        toast(d.origAfter.length ? `${G.icon('unlink', 14)} Unlinked from <b>${d.origAfter.join(', ')}</b> · moved ${days > 0 ? '+' : ''}${days}d` : `Moved ${days > 0 ? '+' : ''}${days}d`);
+      }
+    }
+    draw();
+  });
+  host.addEventListener('dblclick', (e) => { if (e.target.closest('.bar') && sel) { mode = 'edit'; draw(); } });
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); return undo(); }
+    if (!sel) return;
+    if (mode === 'dur') {
+      if (/^[0-9.]$/.test(e.key)) { durBuf += e.key; draw(); }
+      else if (e.key === 'Backspace') { durBuf = durBuf.slice(0, -1); draw(); }
+      else if (e.key === 'Enter') { const v = parseFloat(durBuf); if (v > 0) { snapshot(); byId(sel).dur = Math.round(v * 2) / 2; commit(`Length ${byId(sel).dur}d`); } mode = null; draw(); }
+      else if (e.key === 'Escape') { mode = null; draw(); }
+      e.preventDefault();
+      return;
+    }
+    if (mode) return;
+    const order = tasks.map((t) => t.id);
+    const k = e.key;
+    if (/^[0-9]$/.test(k)) { mode = 'dur'; durBuf = k; draw(); }
+    else if (k === '+' || k === '=') stepDur(1);
+    else if (k === '-') stepDur(-1);
+    else if (k === 'ArrowLeft') nudge(e.shiftKey ? -7 : -1);
+    else if (k === 'ArrowRight') nudge(e.shiftKey ? 7 : 1);
+    else if (k === 'ArrowDown' || (k === 'Tab' && !e.shiftKey)) { sel = order[Math.min(order.length - 1, order.indexOf(sel) + 1)]; draw(); }
+    else if (k === 'ArrowUp' || (k === 'Tab' && e.shiftKey)) { sel = order[Math.max(0, order.indexOf(sel) - 1)]; draw(); }
+    else if (k.toLowerCase() === 'a') openAdd();
+    else if (k === 'Enter') { mode = 'edit'; draw(); }
+    else if (k === 'Delete' || k === 'Backspace') del();
+    else if (k === 'Escape') { sel = null; draw(); }
+    else return;
+    e.preventDefault();
+  });
+
+  draw();
+</script>
+</body>
+</html>

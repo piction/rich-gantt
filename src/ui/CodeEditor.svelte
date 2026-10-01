@@ -42,6 +42,17 @@
 
   onDestroy(() => view?.destroy());
 
+  /** Put the caret on a 1-based line, scroll it to the middle and focus the editor. */
+  export function revealLine(lineNo: number): void {
+    if (!view || lineNo < 1 || lineNo > view.state.doc.lines) return;
+    const line = view.state.doc.line(lineNo);
+    view.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    });
+    view.focus();
+  }
+
   function pushDiagnostics(): void {
     if (!view) return;
     const doc = view.state.doc;
