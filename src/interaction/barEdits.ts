@@ -1,9 +1,8 @@
-// Pure model edits behind the bar-zone drag gestures (brainstorm §6.7–§6.9). Each returns
+// Pure model edits behind the bar gestures (end-edge resize, dot connector). Each returns
 // a new ParsedDocument; successors are NOT touched here — they cascade automatically because
 // they are `after` this task and get recomputed by the scheduler.
 
 import type { ParsedDocument, Task, TaskId } from '../model/types';
-import { fromEpochDay } from '../compute/dateMath';
 
 function withTask(
   doc: ParsedDocument,
@@ -17,45 +16,9 @@ function withTask(
   return { ...doc, tasks };
 }
 
-/** Absolute starts are whole calendar days (no time component in the file, §6.5). */
-function snapDay(day: number): number {
-  return Math.round(day);
-}
-
 /** Durations are non-negative multiples of 0.5 days. */
 function snapDuration(days: number): number {
   return Math.max(0.5, Math.round(days * 2) / 2);
-}
-
-/**
- * Set the free-form metadata body (the `## Task metadata: <id>` block). `attrs` are left as-is
- * here — they are re-derived from the body when commitDocument re-parses the serialized text.
- */
-export function setMetadataBody(
-  doc: ParsedDocument,
-  id: TaskId,
-  body: string,
-): ParsedDocument {
-  return withTask(doc, id, (t) => {
-    // Don't materialize an empty metadata block for a task that never had one.
-    if (!t.metadata && body.trim() === '') return t;
-    return { ...t, metadata: { id, attrs: t.metadata?.attrs ?? new Map(), body } };
-  });
-}
-
-/**
- * Front-edge / middle drag: pin the task to an absolute start. This REPLACES the position,
- * so any incoming `after` is broken — the one destructive op (§6.9). Duration is preserved.
- */
-export function setAbsoluteStart(
-  doc: ParsedDocument,
-  id: TaskId,
-  startDay: number,
-): ParsedDocument {
-  return withTask(doc, id, (t) => ({
-    ...t,
-    position: { kind: 'absolute', date: fromEpochDay(snapDay(startDay)) },
-  }));
 }
 
 /**

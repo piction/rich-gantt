@@ -2,12 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { parseDocument } from '../../src/parser';
 import { computeSchedule } from '../../src/compute/scheduler';
 import {
-  setAbsoluteStart,
   setDuration,
   addDependency,
   canAddDependency,
 } from '../../src/interaction/barEdits';
-import { toEpochDay } from '../../src/compute/dateMath';
 import type { ParsedDocument } from '../../src/model/types';
 
 function makeDoc(): ParsedDocument {
@@ -26,48 +24,6 @@ function makeDoc(): ParsedDocument {
   if (!r.ok) throw new Error('parse failed');
   return r.doc;
 }
-
-describe('setAbsoluteStart (front/middle drag)', () => {
-  it('pins an anchor to a new whole day, keeping duration; successors cascade', () => {
-    const doc = makeDoc();
-    const next = setAbsoluteStart(doc, 'a', toEpochDay('2026-01-05') + 0.3);
-    expect(next.tasks.get('a')!.position).toEqual({
-      kind: 'absolute',
-      date: '2026-01-05', // snapped to whole day
-    });
-    expect(next.tasks.get('a')!.duration).toBe(2); // unchanged
-    // B (after a) cascades: starts at a's new end.
-    const s = computeSchedule(next);
-    expect(s.tasks.get('b')!.start).toBe('2026-01-07');
-  });
-
-  it('breaks the incoming dependency when pinning an `after` task', () => {
-    const doc = makeDoc();
-    const next = setAbsoluteStart(doc, 'b', toEpochDay('2026-02-01'));
-    expect(next.tasks.get('b')!.position).toEqual({
-      kind: 'absolute',
-      date: '2026-02-01',
-    });
-    // C still depends on B and cascades from B's new (detached) position.
-    const s = computeSchedule(next);
-    expect(s.tasks.get('c')!.start).toBe('2026-02-03');
-  });
-
-  it('detaches a packed task in place (chevron break) — pinned at its current start', () => {
-    const doc = makeDoc();
-    const before = computeSchedule(doc);
-    // The chevron break pins the successor to its own current start day, so it detaches
-    // from `a` without visually jumping.
-    const next = setAbsoluteStart(doc, 'b', before.tasks.get('b')!.startDay);
-    expect(next.tasks.get('b')!.position.kind).toBe('absolute');
-    const after = computeSchedule(next);
-    expect(after.tasks.get('b')!.startDay).toBe(before.tasks.get('b')!.startDay);
-    // Moving `a` no longer drags `b` — the dependency is gone.
-    const moved = setAbsoluteStart(next, 'a', toEpochDay('2026-06-01'));
-    const s = computeSchedule(moved);
-    expect(s.tasks.get('b')!.startDay).toBe(before.tasks.get('b')!.startDay);
-  });
-});
 
 describe('setDuration (end-edge drag)', () => {
   it('changes duration (snapped to 0.5), keeps position, cascades successors', () => {
