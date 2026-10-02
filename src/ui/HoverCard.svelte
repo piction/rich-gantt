@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { computePosition, flip, shift, offset } from '@floating-ui/dom';
+  import { computePosition, flip, shift, offset, size } from '@floating-ui/dom';
   import { tick } from 'svelte';
   import type { Task, ScheduledTask } from '../model/types';
   import type { LegendEntry } from '../render/colors';
@@ -16,14 +16,19 @@
   export let legend: LegendEntry[] = [];
 
   // Title + dates, one line per `after` predecessor, the keys as read-only chips (the same as
-  // the key editor), then the free markdown notes below a divider, clamped to a short preview.
+  // the key editor), then the free markdown notes below a divider. The notes are the point of
+  // the card, so it grows with them: wider up to MAX_W (CSS), taller up to MAX_H or the space
+  // the viewport has left. Notes that still don't fit fade out at the bottom.
   $: dependsOn = task && task.position.kind === 'after' ? task.position.ids : [];
   $: notes = task?.metadata ? splitMetadataBody(task.metadata.body).notes : '';
   $: attrs = task?.metadata ? [...task.metadata.attrs] : [];
   const fillOf = (v: string): string | undefined => legend.find((e) => e.value === v)?.fill;
   const day = (d: string): string => formatWeekdayLabel(toEpochDay(d));
 
+  const MAX_H = 560;
   let card: HTMLDivElement;
+  let notesEl: HTMLDivElement | null = null;
+  let cut = false;
 
   // Reposition whenever the target task/anchor changes (Floating UI: flip/shift so it
   // never clips at the timeline edges).
@@ -34,10 +39,21 @@
     if (!card || !anchor) return;
     const { x, y } = await computePosition(anchor, card, {
       placement: 'top',
-      middleware: [offset(8), flip(), shift({ padding: 6 })],
+      middleware: [
+        offset(8),
+        flip(),
+        size({
+          padding: 6,
+          apply({ availableHeight, elements }) {
+            elements.floating.style.maxHeight = `${Math.min(MAX_H, availableHeight)}px`;
+          },
+        }),
+        shift({ padding: 6 }),
+      ],
     });
     card.style.left = `${x}px`;
     card.style.top = `${y}px`;
+    cut = !!notesEl && notesEl.scrollHeight > notesEl.clientHeight + 1;
   }
 </script>
 
@@ -71,7 +87,7 @@
     {/if}
     {#if notes}
       <div class="rule" />
-      <div class="notes">{@html renderMetadataMarkdown(notes)}</div>
+      <div class="notes" class:cut bind:this={notesEl}>{@html renderMetadataMarkdown(notes)}</div>
     {/if}
   </div>
 {/if}
@@ -82,7 +98,11 @@
     top: 0;
     left: 0;
     z-index: 10;
-    width: 280px;
+    /* grows with the content: no narrower than the old card, no wider than a reading column */
+    width: max-content;
+    min-width: 280px;
+    max-width: 440px;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -92,6 +112,7 @@
     border-radius: 12px;
     box-shadow: var(--shadow);
     padding: 10px 12px;
+    overflow: hidden;
     font-size: 12.5px;
     pointer-events: none;
   }
@@ -165,19 +186,22 @@
   }
   /* Divider between the structured part and the free notes; runs edge to edge. */
   .rule {
+    flex: none;
     height: 1px;
     background: var(--border);
     margin: 4px -12px 2px;
   }
-  /* Basic-markdown rendering of the notes (see ui/markdown.ts), clamped to a 3-line preview;
-     the full text is in the editor. */
+  /* Basic-markdown rendering of the notes (see ui/markdown.ts). They take whatever height the
+     card has left; when that isn't enough the last lines fade out. */
   .notes {
+    flex: 0 1 auto;
+    min-height: 0;
     line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .notes.cut {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
   }
   .notes :global(code) {
     font-family: ui-monospace, monospace;
