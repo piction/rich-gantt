@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Plan title — placement proposals</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  /* ---------- app shell replica (FileToolbar + viz toolbar + chart + code pane) ---------- */
+  .shell { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); margin: 10px 0 6px; max-width: 1100px; }
+  .tb { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel-bg); min-height: 30px; }
+  .brand { font-size: 13px; font-weight: 700; margin-right: 4px; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--border); background: var(--bg); color: var(--fg); padding: 4px 10px; font-size: 12px; border-radius: 5px; cursor: pointer; font-family: inherit; }
+  .btn:hover { border-color: var(--fg-muted); }
+  .vtb { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg-muted); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg span { padding: 4px 10px; background: var(--bg); }
+  .seg span + span { border-left: 1px solid var(--border); }
+  .seg .on { background: var(--bar-0); color: #fff; }
+  .sel { border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--fg); background: var(--bg); }
+  .canvas { height: 190px; overflow: hidden; background: var(--timeline-bg); }
+  .code { height: 54px; border-top: 1px solid var(--border); font: 12px/1.6 ui-monospace, monospace; color: var(--fg-muted); padding: 6px 12px; background: var(--bg); }
+
+  /* ---------- the editable title (shared behaviour) ---------- */
+  .ttl { all: unset; box-sizing: border-box; color: var(--fg); border-radius: 6px; cursor: text; border: 1px solid transparent; white-space: nowrap; }
+  .ttl:hover, .ttl.hover { background: var(--kbd-bg); }
+  .ttl.edit { background: var(--bg); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .ttl.edit::after { content: ''; display: inline-block; width: 1.5px; height: 1em; background: var(--fg); vertical-align: -0.12em; margin-left: 1px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .pencil { color: var(--fg-muted); opacity: 0; margin-left: 4px; vertical-align: -2px; display: inline-block; }
+  .ttl:hover .pencil, .ttl.hover .pencil { opacity: 1; }
+  .ttl.edit .pencil { display: none; }
+  .meta { font-size: 11.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* A — title owns the top bar's left side; brand shrinks to a mark */
+  .a .mark { width: 20px; height: 20px; border-radius: 5px; background: var(--bar-0); display: grid; place-items: center; flex: none; }
+  .a .mark i { display: block; width: 10px; height: 2px; background: #fff; border-radius: 1px; box-shadow: 3px 4px 0 #fff, -2px -4px 0 #fff; }
+  .a .ttl { font-size: 15px; font-weight: 650; padding: 2px 6px; }
+  .a .sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+  /* B — document header inside the chart pane, above the view controls */
+  .b .hdr { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 12px; }
+  .b .ttl { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; padding: 1px 6px; margin-left: -6px; }
+
+  /* C — centered in the top bar (Docs / Figma style) */
+  .c .tb { display: grid; grid-template-columns: 1fr auto 1fr; }
+  .c .l, .c .r { display: flex; align-items: center; gap: 8px; }
+  .c .r { justify-content: flex-end; }
+  .c .ttl { font-size: 14px; font-weight: 600; padding: 3px 8px; text-align: center; }
+  .c .mid { display: flex; align-items: baseline; gap: 8px; }
+
+  /* D — breadcrumb: app / title.md */
+  .d .crumb { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
+  .d .crumb .app { color: var(--fg-muted); font-weight: 600; }
+  .d .crumb .slash { color: var(--border); font-size: 16px; }
+  .d .ttl { font-size: 14px; font-weight: 650; padding: 2px 6px; }
+  .d .ext { color: var(--fg-muted); font-weight: 400; margin-left: 1px; }
+
+  .states { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-muted); margin: 0 0 4px; }
+  .states b { color: var(--fg); }
+  .pc { font-size: 13px; max-width: 1100px; margin: 4px 0 0; }
+  .pc td { vertical-align: top; padding: 2px 14px 2px 0; }
+  .pc .good { color: #059669; } .pc .bad { color: var(--danger); }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 1068px; font-size: 13.5px; background: var(--panel-bg); margin-top: 16px; }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>Plan title — placement proposals</h1>
+<p class="lead">
+  The plan gets a visible, editable title. It is the source of the download filename
+  (<code>Roadmap Q4</code> → <code>Roadmap Q4.md</code>) and is filled from the uploaded file name.
+  Click to edit in place, <kbd>Enter</kbd> / blur commits, <kbd>Esc</kbd> reverts. Each proposal shows three states:
+  <b>rest</b>, <b>hover</b>, <b>editing</b>. Toggle the theme top-right.
+</p>
+
+<div id="out"></div>
+
+<div class="reco">
+  <h3>Recommendation: A, with B's meta line as an option</h3>
+  A gives the title the most prominent spot in the app without adding height or touching the chart pane: the
+  title replaces the "Gantt Planner" wordmark (the app name moves to a small logo mark + the browser tab).
+  File actions are grouped on the right, away from the title. If you want it to read like a document heading,
+  B is the stronger "title" but costs ~45 px of chart height.
+</div>
+
+<h2>Open decision</h2>
+<ol class="pc">
+  <li><b>Title = mermaid <code>title</code> line?</b> The format already has <code>title …</code>. Linking them means renaming in the
+    toolbar rewrites that line (and editing the line updates the toolbar); on upload the file name wins only when the file has no
+    <code>title</code>. Otherwise the title is filename-only and not saved inside the file.</li>
+</ol>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const TITLE = 'Roadmap Q4';
+  const META = '14 tasks · 6 Jan – 21 Mar';
+  const pencil = `<span class="pencil">${G.icon('pencil', 13)}</span>`;
+  const ttl = (state, extra = '') => `<span class="ttl ${state}">${TITLE}${extra}${pencil}</span>`;
+  const files = `<button class="btn">Upload</button><button class="btn">Download</button>`;
+  const theme = `<button class="btn" title="Toggle theme">☾</button>`;
+  const vtb = `<div class="vtb"><span class="seg"><span class="on">Day</span><span>Week</span><span>Month</span></span>
+    <span>Exclude weekends</span><span>Color by <span class="sel">owner ▾</span></span></div>`;
+
+  const P = [
+    {
+      key: 'a', name: 'A · Title owns the top bar',
+      text: 'The wordmark becomes a small logo mark; the title sits right after it as the largest text in the chrome. Upload / Download move right, next to the theme toggle.',
+      tb: (s) => `<div class="tb"><span class="mark" title="Gantt Planner"><i></i></span>${ttl(s)}<span class="spacer"></span>${files}<span class="sep"></span>${theme}</div>`,
+      pros: ['No extra height', 'Clearly the document name, top-left where eyes start', 'Buttons grouped, nothing between them'],
+      cons: ['App name only visible as mark / tab title'],
+    },
+    {
+      key: 'b', name: 'B · Document header above the chart',
+      text: 'Top bar stays as today. The chart pane gets a heading row: large title + a muted meta line (task count, date span). Reads like a report title, also in screenshots.',
+      tb: () => `<div class="tb"><span class="brand">Gantt Planner</span><span class="spacer"></span>${files}${theme}</div>`,
+      hdr: (s) => `<div class="hdr">${ttl(s)}<span class="meta">${META}</span></div>`,
+      pros: ['Strongest "title" — biggest type, own row', 'Meta line gives instant context', 'Top bar untouched'],
+      cons: ['~45 px less chart height', 'Two horizontal bars + header = more chrome'],
+    },
+    {
+      key: 'c', name: 'C · Centered in the top bar',
+      text: 'Brand left, title centered (Google Docs / Figma pattern), file actions right. The meta appears after the title in muted text.',
+      tb: (s) => `<div class="tb"><div class="l"><span class="brand">Gantt Planner</span></div>
+        <div class="mid">${ttl(s)}<span class="meta">${META}</span></div><div class="r">${files}${theme}</div></div>`,
+      pros: ['Familiar from doc editors', 'Balanced, symmetric bar'],
+      cons: ['Centre is far from where the eye starts', 'Long titles collide with left/right groups on narrow windows'],
+    },
+    {
+      key: 'd', name: 'D · Breadcrumb  app / file',
+      text: 'Gantt Planner / Roadmap Q4.md — makes it explicit that the title is the file you will download. The .md suffix is shown muted and not editable.',
+      tb: (s) => `<div class="tb"><span class="crumb"><span class="app">Gantt Planner</span><span class="slash">/</span>${ttl(s, '<span class="ext">.md</span>')}</span><span class="spacer"></span>${files}${theme}</div>`,
+      pros: ['No extra height', 'Obvious link to the downloaded filename'],
+      cons: ['Feels more like a file name than a chart title', 'Smaller visual weight than A/B'],
+    },
+  ];
+
+  const out = document.querySelector('#out');
+  for (const p of P) {
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h2>${p.name}</h2><p class="lead">${p.text}</p>`;
+    for (const [state, label] of [['', 'rest'], ['hover', 'hover'], ['edit', 'editing']]) {
+      const shell = document.createElement('div');
+      shell.className = 'shell ' + p.key;
+      shell.innerHTML = `${p.tb(state)}${p.hdr ? p.hdr(state) : ''}${vtb}<div class="canvas"><div class="host"></div></div>
+        <div class="code">\`\`\`mermaid<br>gantt<br>&nbsp;&nbsp;&nbsp;&nbsp;title ${TITLE}</div>`;
+      const cap = document.createElement('div');
+      cap.className = 'states';
+      cap.innerHTML = `<span><b>${label}</b></span>`;
+      sec.append(cap, shell);
+      if (label === 'rest') G.render(shell.querySelector('.host'), { tasks: G.sample() });
+      else shell.querySelector('.canvas').style.height = '0';
+      if (label !== 'rest') shell.querySelector('.code').style.display = 'none';
+    }
+    sec.insertAdjacentHTML('beforeend', `<table class="pc"><tr><td class="good">+ ${p.pros.join('<br>+ ')}</td><td class="bad">− ${p.cons.join('<br>− ')}</td></tr></table>`);
+    out.append(sec);
+  }
+</script>
+</body>
+</html>
