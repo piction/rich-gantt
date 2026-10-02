@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Hover card — representations</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  .states { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; padding: 18px 16px 24px; background: var(--timeline-bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .state > .cap { font-size: 11.5px; font-weight: 600; color: var(--fg-muted); margin-bottom: 6px; }
+  .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; display: inline-block; }
+  .mono { font-family: ui-monospace, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 900px; font-size: 13.5px; background: var(--panel-bg); }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+
+  /* ---------- shared: the floating surface of the pill / popovers ---------- */
+  .hc {
+    width: 280px; background: var(--surface); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow); font-size: 12.5px; overflow: hidden;
+  }
+  .hc .nt { color: var(--fg); line-height: 1.45; }
+  .hc .nt p { margin: 0; }
+  .hc .nt ul { margin: 2px 0 0; padding-left: 16px; }
+  .hc .nt code { font: 11.5px ui-monospace, monospace; background: var(--kbd-bg); border-radius: 3px; padding: 0 3px; }
+  .hc .nt a { color: var(--accent); }
+  .hc .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .hc .empty { color: var(--fg-muted); font-style: italic; }
+  .hc .head { display: flex; align-items: flex-start; gap: 8px; }
+  .hc .title { font-weight: 600; font-size: 13.5px; line-height: 1.3; flex: 1; min-width: 0; }
+  .hc .id { font: 11px ui-monospace, monospace; color: var(--fg-muted); background: var(--kbd-bg); border-radius: 4px; padding: 1px 5px; flex: none; }
+  .hc .dur { font: 600 11px system-ui; font-variant-numeric: tabular-nums; color: var(--fg-muted); background: var(--kbd-bg); border-radius: 4px; padding: 1px 6px; flex: none; }
+  .hc .muted { color: var(--fg-muted); }
+  .hc .hint { padding: 6px 12px; border-top: 1px solid var(--border); background: var(--panel-bg); font-size: 11px; }
+  .hc .i { display: inline-block; vertical-align: -2px; }
+
+  /* ---------- 0: today (replica of HoverCard.svelte) ---------- */
+  .today { width: 280px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 8px 10px; font-size: 12px; }
+  .today .t { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; font-weight: 600; }
+  .today .t .id { color: var(--fg-muted); font-weight: 400; font-family: ui-monospace, monospace; }
+  .today .t .d { margin-left: auto; font-size: 11px; color: var(--fg-muted); background: rgba(127,127,127,.15); border-radius: 4px; padding: 1px 6px; }
+  .today ul { margin: 2px 0; padding-left: 16px; }
+  .today p { margin: 4px 0 0; }
+  .today code { font-family: ui-monospace, monospace; background: rgba(127,127,127,.15); border-radius: 3px; padding: 0 3px; }
+  .today .dates { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  .today .dates div { display: flex; justify-content: space-between; }
+  .today .dates span:first-child { color: var(--fg-muted); }
+
+  /* ---------- A: chips (same chip as the key editor, read-only) ---------- */
+  .a .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .a .sub { font-size: 11.5px; color: var(--fg-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+  .a .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .a .kv { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 11.5px; }
+  .a .kv .k { background: var(--kbd-bg); padding: 2px 6px; color: var(--fg-muted); }
+  .a .kv .v { width: auto; border: 0; padding: 2px 6px; display: inline-flex; align-items: center; gap: 4px; }
+
+  /* ---------- A2: iteration on A ---------- */
+  .a2 .deps { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+  .a2 .deps .sub { margin-top: 0; }
+  .a2 .deps .sub b { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .a2 .rule { height: 1px; background: var(--border); margin: 4px -12px 2px; }
+
+  /* ---------- B: property list (key | value grid, schedule in the same grid) ---------- */
+  .b .top { padding: 10px 12px 8px; }
+  .b .grid { display: grid; grid-template-columns: 64px 1fr; row-gap: 4px; column-gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+  .b .grid .k { color: var(--fg-muted); font-size: 11px; font-weight: 600; padding-top: 1px; }
+  .b .grid .v { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .b .grid .sep { grid-column: 1 / -1; height: 1px; background: var(--border); margin: 3px 0; }
+  .b .nt { padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+
+  /* ---------- C: color-led header ---------- */
+  .c .band { height: 4px; }
+  .c .top { padding: 9px 12px 0; }
+  .c .meta { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 6px; font-size: 12px; }
+  .c .meta span { display: inline-flex; align-items: center; gap: 4px; }
+  .c .meta .lab { color: var(--fg-muted); font-size: 11px; }
+  .c .type { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 1px 7px 1px 5px; border-radius: 999px; }
+  .c .when { margin: 9px 12px 0; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; }
+  .c .when .rail { position: relative; height: 6px; border-radius: 3px; }
+  .c .when .rail::before, .c .when .rail::after { content: ''; position: absolute; top: -2px; width: 2px; height: 10px; border-radius: 1px; background: inherit; filter: brightness(0.8); }
+  .c .when .rail::before { left: 0; } .c .when .rail::after { right: 0; }
+  .c .when .rail .lbl { position: absolute; left: 50%; top: -15px; transform: translateX(-50%); font: 600 10.5px system-ui; color: var(--fg-muted); white-space: nowrap; }
+  .c .after { margin: 6px 12px 0; font-size: 11.5px; color: var(--fg-muted); display: flex; align-items: center; gap: 5px; }
+  .c .after b { color: var(--fg); font-weight: 500; }
+  .c .nt { margin: 9px 12px 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ---------- in-context frame ---------- */
+  .ctx { position: relative; height: 400px; background: var(--timeline-bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); overflow: hidden; }
+  .ctx .bar { position: absolute; height: 20px; border-radius: 3px; font: 12px system-ui; display: flex; align-items: center; padding: 0 6px; white-space: nowrap; overflow: hidden; }
+  .ctx .bar.hov { box-shadow: 0 0 0 1px var(--bar-stroke-hover); }
+  .ctx .hc { position: absolute; }
+  .ctx .slab { position: absolute; left: 12px; font: 600 12px system-ui; color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← All mockups</a>
+<h1>Hover card · showing keys and values properly</h1>
+<p class="lead">
+  Today the hover card renders the whole metadata block as markdown, so keys show up as a plain bullet list.
+  It also uses its own surface (6 px radius, <code>--bg</code>, a different shadow) instead of the
+  <code>--surface</code>, 12 px radius and <code>--shadow</code> of the pill and popovers.
+  All variants below show the keys as structured data from <code>metadata.attrs</code>, render only the notes
+  (the markdown after the keys) as markdown, and use the same surface as the rest of the floating UI.
+</p>
+<div id="frames"></div>
+
+<h2>Recommendation</h2>
+<div class="reco">
+  <h3>B · Property list, with the color swatch from C</h3>
+  <ul>
+    <li><b>Easiest to scan.</b> Keys line up in one column, values in the other, and Start/End/After use the same grid. One layout for everything, no special cases.</li>
+    <li><b>Same structure as the edit popover</b> (label → keys → notes), so hovering previews exactly what editing opens.</li>
+    <li>Works with 0 or 8 keys and with long values. A (chips) wraps unpredictably with many keys. C relies on a "type"-like key to look good.</li>
+    <li>Borrow from C: the swatch of the "Color by" value, so the card links visibly to the bar color and the legend.</li>
+  </ul>
+</div>
+
+<h2>Applies to all variants</h2>
+<ul class="lead">
+  <li><b>Notes clamp at 3 lines</b> with a fade. The full text is in the editor (<kbd>↵</kbd>), and the hover card stays a preview.</li>
+  <li><b>Dates read as days</b> ("Mon 14 Sep"), the same as the tick labels and the add popover, not ISO strings.</li>
+  <li><b>No metadata:</b> no "No metadata for this task." line. Show the schedule part only, so the card just gets shorter.</li>
+  <li><b>Same surface</b> as pill/popovers (<code>--surface</code>, <code>--border</code>, 12 px radius, <code>--shadow</code>). The section hover card should get the same treatment.</li>
+</ul>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const I = G.icon;
+  const esc = G.esc;
+
+  // Data mirrors public/sample-plan.md; "Color by" = type (architecture = --bar-0, development = --bar-1).
+  const FILL = { architecture: 'var(--bar-0)', development: 'var(--bar-1)' };
+  const TASKS = {
+    arch1: {
+      id: 'arch1', label: 'Data model design', dur: 3, start: 'Mon 14 Sep', end: 'Wed 16 Sep', after: [],
+      attrs: [['type', 'architecture'], ['owner', 'Jonas'], ['team', 'Design']],
+      notes: '<p>Lock the <b>Mermaid+metadata</b> format and the <i>task-ID</i> rule.</p>',
+    },
+    dev2: {
+      id: 'dev2', label: 'Model unit tests', dur: 4, start: 'Thu 17 Sep', end: 'Sun 20 Sep', after: ['Data model design'],
+      attrs: [['type', 'development'], ['owner', 'Alex'], ['team', 'Core']],
+      notes: '<p>Tests for:</p><ul><li>parse errors</li><li>round-trip</li><li>ID stability</li></ul>',
+    },
+    dev5: {
+      id: 'dev5', label: 'Drag & dot gestures', dur: 5, start: 'Mon 5 Oct', end: 'Fri 9 Oct', after: ['Interaction design'],
+      attrs: [['type', 'development'], ['owner', 'Alex'], ['team', 'Frontend'], ['prio', 'high'], ['ticket', 'GP-142'], ['status', 'in review']],
+      notes: '<p>Pointer-event drag, cascade, dependency editing. <b>Blocked on</b> <code>arch3</code>. Needs a decision on snapping to half days and how the cut-arrow preview behaves while scrolling the chart horizontally.</p>',
+    },
+    dev6: {
+      id: 'dev6', label: 'Metadata hover UI', dur: 3, start: 'Mon 12 Oct', end: 'Wed 14 Oct',
+      after: ['Interaction design', 'SVG timeline & bars', 'Parser & serializer'],
+      attrs: [['type', 'development'], ['owner', 'Sam'], ['team', 'Frontend']],
+      notes: '<p>Floating-UI hover card — now renders the metadata block\'s markdown.</p>',
+    },
+    bare: { id: 'found4', label: 'Kickoff', dur: 1, start: 'Mon 14 Sep', end: 'Mon 14 Sep', after: [], attrs: [], notes: '' },
+  };
+  const COLOR_KEY = 'type';
+  const sw = (v) => (FILL[v] ? `<span class="sw" style="background:${FILL[v]}"></span>` : '');
+
+  function frame({ step, title, text, notes = [], states }) {
+    const sec = document.createElement('section');
+    sec.className = 'frame';
+    sec.innerHTML = `<header><span class="step">${step}</span><div><h3>${title}</h3><p>${text}</p></div></header>
+      <div class="states">${states.map(([cap, html]) => `<div class="state"><div class="cap">${cap}</div>${html}</div>`).join('')}</div>
+      ${notes.length ? `<ol class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ol>` : ''}`;
+    document.querySelector('#frames').append(sec);
+    return sec;
+  }
+
+  // ---- 0: today ----
+  function today(t) {
+    const body = t.attrs.length || t.notes
+      ? `<ul>${t.attrs.map(([k, v]) => `<li>${k}: ${esc(v)}</li>`).join('')}</ul>${t.notes}`
+      : '<div class="muted">No metadata for this task.</div>';
+    return `<div class="today"><div class="t">${esc(t.label)} <span class="id">${t.id}</span><span class="d">${t.dur}d</span></div>${body}
+      <div class="dates"><div><span>Start</span><span>2026-09-14</span></div><div><span>End</span><span>2026-09-16</span></div></div></div>`;
+  }
+
+  // ---- A: chips ----
+  function cardA(t) {
+    const chips = t.attrs.length
+      ? `<div class="chips">${t.attrs.map(([k, v]) => `<span class="kv"><span class="k">${k}</span><span class="v">${k === COLOR_KEY ? sw(v) : ''}${esc(v)}</span></span>`).join('')}</div>`
+      : '';
+    const after = t.after.length ? `</div><div class="sub">${I('link', 11)} after ${esc(t.after.join(', '))}` : '';
+    return `<div class="hc a"><div class="body">
+      <div><div class="head"><span class="title">${esc(t.label)}</span><span class="dur">${t.dur}d</span></div>
+        <div class="sub num">${I('calendar', 11)} ${t.start} → ${t.end}${after}</div></div>
+      ${chips}
+      ${t.notes ? `<div class="nt clamp">${t.notes}</div>` : ''}
+    </div></div>`;
+  }
+
+  // ---- A2: A + divider above the notes, one line per predecessor ----
+  function cardA2(t) {
+    const chips = t.attrs.length
+      ? `<div class="chips">${t.attrs.map(([k, v]) => `<span class="kv"><span class="k">${k}</span><span class="v">${k === COLOR_KEY ? sw(v) : ''}${esc(v)}</span></span>`).join('')}</div>`
+      : '';
+    const deps = t.after.length
+      ? `<div class="deps">${t.after.map((n) => `<div class="sub">${I('link', 11)} after <b>${esc(n)}</b></div>`).join('')}</div>`
+      : '';
+    return `<div class="hc a a2"><div class="body">
+      <div><div class="head"><span class="title">${esc(t.label)}</span><span class="dur">${t.dur}d</span></div>
+        <div class="sub num">${I('calendar', 11)} ${t.start} → ${t.end}</div>${deps}</div>
+      ${chips}
+      ${t.notes ? `<div class="rule"></div><div class="nt clamp">${t.notes}</div>` : ''}
+    </div></div>`;
+  }
+
+  // ---- B: property list ----
+  function cardB(t) {
+    const rows = t.attrs.map(([k, v]) => `<span class="k">${k}</span><span class="v">${k === COLOR_KEY ? sw(v) : ''}${esc(v)}</span>`).join('');
+    const sched = `<span class="k">Start</span><span class="v num">${t.start}</span>${t.after.length ? `<span class="k">After</span><span class="v">${I('link', 11)} ${esc(t.after.join(', '))}</span>` : ''}
+      <span class="k">End</span><span class="v num">${t.end}</span>`;
+    return `<div class="hc b">
+      <div class="top"><div class="head"><span class="title">${esc(t.label)}</span><span class="dur">${t.dur}d</span></div></div>
+      <div class="grid">${rows}${t.attrs.length ? '<span class="sep"></span>' : ''}${sched}</div>
+      ${t.notes ? `<div class="nt"><div class="clamp">${t.notes}</div></div>` : ''}
+    </div>`;
+  }
+
+  // ---- C: color-led header ----
+  function cardC(t) {
+    const typeV = t.attrs.find(([k]) => k === COLOR_KEY)?.[1];
+    const fill = FILL[typeV] ?? 'var(--bar-none)';
+    const rest = t.attrs.filter(([k]) => k !== COLOR_KEY);
+    const pill = typeV ? `<span class="type" style="background:color-mix(in srgb, ${fill} 18%, transparent)">${sw(typeV)}${esc(typeV)}</span>` : '';
+    return `<div class="hc c">
+      <div class="band" style="background:${fill}"></div>
+      <div class="top">
+        <div class="head"><span class="title">${esc(t.label)}</span>${pill}</div>
+        ${rest.length ? `<div class="meta">${rest.map(([k, v]) => `<span><span class="lab">${k}</span>${esc(v)}</span>`).join('')}</div>` : ''}
+      </div>
+      <div class="when num"><span>${t.start}</span><span class="rail" style="background:${fill}"><span class="lbl">${t.dur}d</span></span><span>${t.end}</span></div>
+      ${t.after.length ? `<div class="after">${I('link', 11)} after <b>${esc(t.after.join(', '))}</b></div>` : ''}
+      ${t.notes ? `<div class="nt"><div class="clamp">${t.notes}</div></div>` : '<div style="height:10px"></div>'}
+    </div>`;
+  }
+
+  const set = (fn) => [
+    ['Short notes · arch1', fn(TASKS.arch1)],
+    ['List notes, after · dev2', fn(TASKS.dev2)],
+    ['Many keys, long notes · dev5', fn(TASKS.dev5)],
+    ['No metadata', fn(TASKS.bare)],
+  ];
+
+  frame({
+    step: 0,
+    title: 'Today',
+    text: 'Keys are a markdown bullet list mixed into the notes. ISO dates, a duplicate "End" row, its own surface style, and an empty-state line for tasks without metadata.',
+    states: [['arch1', today(TASKS.arch1)], ['dev2', today(TASKS.dev2)], ['No metadata', today(TASKS.bare)]],
+  });
+
+  frame({
+    step: 'A',
+    title: 'Chips: the read-only twin of the key editor',
+    text: 'Title and length on top, the schedule as one line below it, then the keys as the same chips as the editor, then the notes.',
+    notes: [
+      '<b>Pro:</b> one visual language for keys everywhere. What you hover is what you edit. Compact for 2 to 4 keys.',
+      '<b>Con:</b> with many keys the chips wrap into an uneven block (dev5). Values are harder to scan than in a column.',
+      'The "Color by" key shows its swatch, as in the editor.',
+    ],
+    states: set(cardA),
+  });
+
+  frame({
+    step: 'A2',
+    title: 'Iteration on A: divider above the notes, one line per predecessor',
+    text: 'Same as A, with a full-width divider and some extra space between the keys and the markdown notes. "after" links are listed one per line under the dates, each with its own link icon.',
+    notes: [
+      '<b>The divider</b> separates the structured part (dates, links, keys) from the free text, as the B and C cards do. It runs edge to edge across the card.',
+      '<b>One line per predecessor</b>: names never get joined into one long, wrapping string. A long name is cut off with "…" on its own line.',
+      'The start date is the latest end of all predecessors, so it doesn\'t matter which one is listed first. They are listed in source order (the order in <code>after a b c</code>).',
+      'No predecessors and no notes: both sections disappear, so a bare task stays a two-line card.',
+    ],
+    states: [
+      ['One after · dev2', cardA2(TASKS.dev2)],
+      ['Three after · dev6', cardA2(TASKS.dev6)],
+      ['Many keys, long notes · dev5', cardA2(TASKS.dev5)],
+      ['Short notes, no after · arch1', cardA2(TASKS.arch1)],
+      ['No metadata', cardA2(TASKS.bare)],
+    ],
+  });
+
+  frame({
+    step: 'B',
+    title: 'Property list: keys and schedule in one aligned grid (recommended)',
+    text: 'A two-column grid: muted key labels on the left, values on the right. Start / End sit in the same grid below a thin divider, so the card has one consistent structure. Notes come last.',
+    notes: [
+      '<b>Pro:</b> the most legible and calm option, and it scales from 0 to many keys without changing shape. It\'s the familiar "properties" pattern (Linear, Notion, Jira) and matches the add popover\'s label column.',
+      '<b>Con:</b> slightly taller than A for 1 or 2 keys.',
+      'Key labels use the 11 px semibold muted style of <code>.lbl</code> in the popovers, so the card reads as the same product.',
+    ],
+    states: set(cardB),
+  });
+
+  frame({
+    step: 'C',
+    title: 'Color-led header: the card wears the bar\'s color',
+    text: 'A thin band in the bar color on top, the "Color by" value as a tinted pill next to the title, the other keys inline. The schedule is a small bar from start to end with the length on it.',
+    notes: [
+      '<b>Pro:</b> the strongest link to the bar you hover, and the most "designed" look. The date rail echoes the timeline.',
+      '<b>Con:</b> needs a color key to look right (the "No metadata" card is grey). Inline keys get crowded with many keys (dev5). More visual weight for a transient tooltip.',
+      'The band and pill follow the active "Color by" key, so switching it in the toolbar changes the card too.',
+    ],
+    states: set(cardC),
+  });
+
+  // ---- in context ----
+  {
+    const sec = frame({
+      step: '★',
+      title: 'In context: B over the timeline',
+      text: 'The card above the hovered bar, with the same surface as the action pill. pointer-events stay off, so it never blocks the chart.',
+      states: [],
+    });
+    const ctx = document.createElement('div');
+    ctx.className = 'ctx';
+    const X = (d) => 130 + d * 22;
+    ctx.innerHTML = `
+      <span class="slab" style="top:20px">Foundation</span>
+      <div class="bar" style="left:${X(0)}px;top:44px;width:${3 * 22}px;background:var(--bar-0);color:var(--bar-0-fg)">Data m…</div>
+      <div class="bar" style="left:${X(3)}px;top:44px;width:${5 * 22}px;background:var(--bar-1);color:var(--bar-1-fg)">Parser & seria…</div>
+      <div class="bar hov" style="left:${X(3)}px;top:360px;width:${4 * 22}px;background:var(--bar-1);color:var(--bar-1-fg)">Model unit…</div>
+      <div style="position:absolute;left:${X(3) - 10}px;top:${360 - 8 - 262}px">${cardB(TASKS.dev2)}</div>`;
+    sec.querySelector('.states').replaceWith(ctx);
+  }
+</script>
+</body>
+</html>

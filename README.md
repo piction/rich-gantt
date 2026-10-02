@@ -17,9 +17,10 @@ See `../Gantt editor - brainstorm.md` for the full design rationale.
 - **Split-screen** UI: chart on top, CodeMirror 6 editor below, with a debounced
   re-parse. While the code is invalid the chart keeps the last good render and errors show
   inline (banner + editor gutter).
-- **Metadata hover card** (Floating UI) — the `description` cell renders **basic inline
-  markdown** (bold/italic, `code`, safe links, `<br>` breaks, `- ` bullets); escaped +
-  sanitized (see `src/ui/markdown.ts`). **File upload/download**, light/dark theme.
+- **Metadata hover card** (Floating UI) — dates, one line per `after` predecessor, the
+  metadata keys as chips (the "Color by" value with its swatch), and the free notes as **basic
+  markdown** (bold/italic, `code`, safe links, `<br>` breaks, `- ` bullets), clamped to a
+  3-line preview; escaped + sanitized (see `src/ui/markdown.ts`). **File upload/download**, light/dark theme.
 - **Bar-drag editing**: middle = move (anchors), front edge = pin absolute start (detaches
   the incoming dependency), end edge = extend duration; successors cascade. See
   `src/interaction/README.md`.

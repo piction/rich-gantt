@@ -7,6 +7,7 @@ import {
   isWeekend,
   isFirstOfMonth,
   isValidDuration,
+  formatWeekdayLabel,
 } from '../../src/compute/dateMath';
 
 describe('isValidDateString', () => {
@@ -69,5 +70,12 @@ describe('isValidDuration', () => {
     expect(isValidDuration(0.25)).toBe(false);
     expect(isValidDuration(-1)).toBe(false);
     expect(isValidDuration(NaN)).toBe(false);
+  });
+});
+
+describe('formatWeekdayLabel', () => {
+  it('prefixes the weekday', () => {
+    expect(formatWeekdayLabel(toEpochDay('2026-09-14'))).toBe('Mon Sep 14');
+    expect(formatWeekdayLabel(toEpochDay('2026-09-20'))).toBe('Sun Sep 20');
   });
 });

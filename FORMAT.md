@@ -62,9 +62,9 @@ says *when*; the metadata block says *what, why, and what's unresolved*.
   (or the end of the file), so headings of any level are allowed inside it.
 - **The free markdown is the heart of it.** Everything below the key list is
   rich context — the rationale, notes, decisions, links, and open questions that
-  give the task meaning. It's shown in the hover card and supports `**bold**`,
-  `*italic*`, `` `code` ``, `[links](https://…)`, lists, and headings. Write as
-  much as the task deserves; this is where the value lives.
+  give the task meaning. The hover card shows a short preview (the full text is in
+  the editor); it supports `**bold**`, `*italic*`, `` `code` ``, `[links](https://…)`,
+  lists, and headings. Write as much as the task deserves; this is where the value lives.
 - **The keys are lightweight tags for filtering and reference.** Start the block
   with a `- key: value` list. Keys are free-form (`type`, `owner`, `team`,
   `priority`…) and let you **color/filter bars** by a chosen key. A missing key

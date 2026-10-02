@@ -119,7 +119,14 @@
   </div>
 </div>
 
-<HoverCard task={hoverTask} scheduled={hoverScheduled} anchor={hoverAnchor} />
+<HoverCard
+  task={hoverTask}
+  scheduled={hoverScheduled}
+  anchor={hoverAnchor}
+  labelOf={(id) => $activeDocument?.tasks.get(id)?.label ?? id}
+  colorKey={effectiveColorKey}
+  {legend}
+/>
 
 <SectionCard section={hoverSection} anchor={hoverSectionAnchor} />
 

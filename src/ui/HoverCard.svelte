@@ -2,15 +2,26 @@
   import { computePosition, flip, shift, offset } from '@floating-ui/dom';
   import { tick } from 'svelte';
   import type { Task, ScheduledTask } from '../model/types';
+  import type { LegendEntry } from '../render/colors';
+  import { splitMetadataBody } from '../interaction/barEdits';
+  import { formatWeekdayLabel, toEpochDay } from '../compute/dateMath';
   import { renderMetadataMarkdown } from './markdown';
+  import Icon from './Icon.svelte';
 
   export let task: Task | null = null;
   export let scheduled: ScheduledTask | null = null;
   export let anchor: Element | null = null;
+  export let labelOf: (id: string) => string = (id) => id; // predecessor names
+  export let colorKey: string | null = null; // its value gets the swatch from the legend
+  export let legend: LegendEntry[] = [];
 
-  // When the start is derived from predecessors (`after`), show a link icon and name them.
-  $: dependsOn =
-    task && task.position.kind === 'after' ? task.position.ids : null;
+  // Title + dates, one line per `after` predecessor, the keys as read-only chips (the same as
+  // the key editor), then the free markdown notes below a divider, clamped to a short preview.
+  $: dependsOn = task && task.position.kind === 'after' ? task.position.ids : [];
+  $: notes = task?.metadata ? splitMetadataBody(task.metadata.body).notes : '';
+  $: attrs = task?.metadata ? [...task.metadata.attrs] : [];
+  const fillOf = (v: string): string | undefined => legend.find((e) => e.value === v)?.fill;
+  const day = (d: string): string => formatWeekdayLabel(toEpochDay(d));
 
   let card: HTMLDivElement;
 
@@ -32,46 +43,35 @@
 
 {#if task}
   <div class="card" bind:this={card}>
-    <div class="title">
-      <span class="title-text">{task.label} <span class="id">{task.id}</span></span>
-      <span class="duration">{task.duration}d</span>
-    </div>
-    {#if task.metadata && task.metadata.body}
-      <div class="notes">{@html renderMetadataMarkdown(task.metadata.body)}</div>
-    {:else}
-      <div class="empty">No metadata for this task.</div>
-    {/if}
-    {#if scheduled}
-      <div class="dates">
-        <div class="date-row">
-          <span class="date-key">
-            Start
-            {#if dependsOn}
-              <svg
-                class="link-icon"
-                viewBox="0 0 24 24"
-                width="11"
-                height="11"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <title>Starts after {dependsOn.join(', ')}</title>
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-            {/if}
-          </span>
-          <span class="date-val">{scheduled.start}</span>
-        </div>
-        <div class="date-row">
-          <span class="date-key">End</span>
-          <span class="date-val">{scheduled.end}</span>
-        </div>
+    <div>
+      <div class="head">
+        <span class="title">{task.label}</span>
+        <span class="dur">{task.duration}d</span>
       </div>
+      {#if scheduled}
+        <div class="sub">
+          <Icon name="calendar" size={11} />
+          {day(scheduled.start)} → {day(scheduled.end)}
+        </div>
+      {/if}
+      {#each dependsOn as id}
+        <div class="sub"><Icon name="link" size={11} /> after <b>{labelOf(id)}</b></div>
+      {/each}
+    </div>
+    {#if attrs.length}
+      <div class="chips">
+        {#each attrs as [k, v]}
+          {@const fill = k === colorKey ? fillOf(v) : undefined}
+          <span class="kv">
+            <span class="k">{k}</span>
+            <span class="v">{#if fill}<span class="sw" style:background={fill} />{/if}{v}</span>
+          </span>
+        {/each}
+      </div>
+    {/if}
+    {#if notes}
+      <div class="rule" />
+      <div class="notes">{@html renderMetadataMarkdown(notes)}</div>
     {/if}
   </div>
 {/if}
@@ -82,54 +82,112 @@
     top: 0;
     left: 0;
     z-index: 10;
-    max-width: 280px;
-    background: var(--bg);
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--surface);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-    padding: 8px 10px;
-    font-size: 12px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 10px 12px;
+    font-size: 12.5px;
     pointer-events: none;
   }
-  .title {
+  .head {
     display: flex;
-    align-items: baseline;
+    align-items: flex-start;
     gap: 8px;
-    margin-bottom: 4px;
   }
-  .title-text {
-    flex: 1 1 auto;
+  .title {
+    flex: 1;
     min-width: 0;
     font-weight: 600;
+    font-size: 13.5px;
+    line-height: 1.3;
   }
-  .duration {
+  .dur {
     flex: none;
-    align-self: flex-start;
-    color: var(--fg-muted);
     font-weight: 600;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    background: var(--bg-muted, rgba(127, 127, 127, 0.15));
+    color: var(--fg-muted);
+    background: var(--kbd-bg);
     border-radius: 4px;
     padding: 1px 6px;
+  }
+  .sub {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .sub b {
+    color: var(--fg);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .id {
-    color: var(--fg-muted);
-    font-weight: 400;
-    font-family: ui-monospace, monospace;
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
   }
-  /* Basic-markdown rendering of the metadata body (see ui/markdown.ts). */
+  .kv {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 11.5px;
+  }
+  .k {
+    background: var(--kbd-bg);
+    color: var(--fg-muted);
+    padding: 2px 6px;
+  }
+  .v {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+  }
+  .sw {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: none;
+  }
+  /* Divider between the structured part and the free notes; runs edge to edge. */
+  .rule {
+    height: 1px;
+    background: var(--border);
+    margin: 4px -12px 2px;
+  }
+  /* Basic-markdown rendering of the notes (see ui/markdown.ts), clamped to a 3-line preview;
+     the full text is in the editor. */
+  .notes {
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   .notes :global(code) {
     font-family: ui-monospace, monospace;
     font-size: 0.9em;
-    background: var(--bg-muted, rgba(127, 127, 127, 0.15));
+    background: var(--kbd-bg);
     border-radius: 3px;
     padding: 0 3px;
   }
   .notes :global(a) {
-    color: var(--accent, #3b82f6);
+    color: var(--accent);
   }
   .notes :global(ul),
   .notes :global(ol) {
@@ -150,43 +208,12 @@
   .notes :global(pre) {
     margin: 4px 0;
     padding: 6px 8px;
-    background: var(--bg-muted, rgba(127, 127, 127, 0.15));
+    background: var(--kbd-bg);
     border-radius: 4px;
     overflow-x: auto;
   }
   .notes :global(pre) :global(code) {
     background: none;
     padding: 0;
-  }
-  .empty {
-    color: var(--fg-muted);
-  }
-  /* Start/end dates: a separate section below a divider. */
-  .dates {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .date-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .date-key {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--fg-muted);
-  }
-  .link-icon {
-    color: var(--fg-muted);
-    display: block;
-  }
-  .date-val {
-    font-variant-numeric: tabular-nums;
   }
 </style>

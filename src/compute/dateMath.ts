@@ -101,12 +101,19 @@ export function formatDayLabel(epochDay: number): string {
   return `${MONTHS[d.month - 1]} ${d.day}`;
 }
 
+/** A day label with its weekday, like "Mon Sep 14", for a given epoch day. */
+export function formatWeekdayLabel(epochDay: number): string {
+  const d = EPOCH.add({ days: Math.trunc(epochDay) });
+  return `${WEEKDAYS[d.dayOfWeek - 1]} ${MONTHS[d.month - 1]} ${d.day}`;
+}
+
 /** A month label like "Sep 2026" for a given epoch day. */
 export function formatMonthLabel(epochDay: number): string {
   const d = EPOCH.add({ days: Math.trunc(epochDay) });
   return `${MONTHS[d.month - 1]} ${d.year}`;
 }
 
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
