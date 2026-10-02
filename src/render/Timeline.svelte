@@ -1029,11 +1029,9 @@
     cursor: crosshair;
     pointer-events: none;
   }
-  /* reveal a bar's own dots on hover, and arm its source dot for dragging */
-  .bar:hover .dot {
-    opacity: 1;
-  }
+  /* reveal and arm a bar's source dot on hover; front dots only show while drawing */
   .bar:hover .source-dot {
+    opacity: 1;
     pointer-events: auto;
   }
   .front-dot {
