@@ -3,9 +3,10 @@
   // task's. The timeline previews the draft as a ghost bar (this popover is anchored to it).
   // Without `afterLabel` it is "+ New task": a free task pinned to a bound `start`. With
   // `newSection` it creates a section: its name is typed on top and the task is its first.
-  import type { NewTaskDraft } from '../interaction/barEdits';
+  import type { KeyUsage, NewTaskDraft } from '../interaction/barEdits';
   import { isValidDateString } from '../compute/dateMath';
   import Icon from './Icon.svelte';
+  import KeyChips from './KeyChips.svelte';
   import { floating } from './floating';
 
   export let afterLabel: string | null = null;
@@ -13,6 +14,9 @@
   export let newSection = false;
   export let draft: NewTaskDraft; // bound: edits drive the ghost-bar preview
   export let sections: string[];
+  export let catalog: KeyUsage[];
+  export let colorKey: string | null;
+  export let colorValues: string[];
   export let anchor: Element | null;
   export let onCreate: (chain: boolean) => void; // chain = immediately add another after it
   export let onCancel: () => void;
@@ -83,6 +87,10 @@
       </select>
     </div>
   {/if}
+  <div class="row top">
+    <span class="lbl">Keys</span>
+    <KeyChips bind:attrs={draft.attrs} {catalog} {colorKey} {colorValues} />
+  </div>
   <div class="foot">
     <span class="hint"><kbd>↵</kbd> create <kbd>⇧↵</kbd> + next <kbd>Esc</kbd></span>
     <button class="primary" on:click={() => onCreate(false)}>Create</button>
@@ -142,7 +150,14 @@
     gap: 10px;
     margin-bottom: 8px;
   }
+  .row.top {
+    align-items: flex-start;
+  }
+  .row.top .lbl {
+    padding-top: 4px;
+  }
   .lbl {
+    flex: none;
     width: 52px;
     font-size: 11px;
     font-weight: 600;

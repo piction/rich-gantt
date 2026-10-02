@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Add task — keys from existing or new</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  /* storyboard row: several popover states side by side, no chart needed */
+  .states { display: flex; gap: 22px; flex-wrap: wrap; padding: 18px 16px 24px; background: var(--timeline-bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .state { width: 300px; min-height: 360px; }
+  .state > .cap { font-size: 11.5px; font-weight: 600; color: var(--fg-muted); margin-bottom: 6px; }
+  .state > .cap b { color: var(--fg); }
+
+  /* key chip, same look as TaskEditor; the key half is a span once picked, an input while typing */
+  .kvw { position: relative; display: inline-flex; }
+  .kv { align-items: center; background: var(--bg); }
+  .kv.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .kv .k.typing { background: var(--bg); color: var(--fg); width: 64px; border: 0; border-radius: 0; }
+  .kv .v.slot { color: var(--fg-muted); font-style: italic; }
+  .kv .rm { padding: 3px 5px; color: var(--fg-muted); display: inline-flex; }
+  .kv.empty { border-style: dashed; }
+  .kv.empty .k { background: transparent; }
+  .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; display: inline-block; }
+  .kv .sw { margin-left: 6px; }
+  /* "new" marker: this key/value does not exist anywhere else in the plan yet */
+  .new { font: 700 9px system-ui; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); background: var(--accent-soft); border-radius: 3px; padding: 1px 3px; margin-right: 4px; }
+  .caret { height: 11px; }
+
+  /* suggestion list under the chip being edited */
+  .menu {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 3; min-width: 190px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow);
+    padding: 4px; font-size: 12px;
+  }
+  .menu .it { display: flex; align-items: center; gap: 7px; padding: 4px 7px; border-radius: 6px; white-space: nowrap; }
+  .menu .it.hl { background: var(--accent-soft); }
+  .menu .it .n { margin-left: auto; color: var(--fg-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .menu .it.create { color: var(--accent); font-weight: 600; }
+  .menu .sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .menu .foot { font-size: 10.5px; color: var(--fg-muted); padding: 3px 7px 1px; display: flex; gap: 4px; align-items: center; }
+  .menu .grp { font-size: 10.5px; font-weight: 600; color: var(--fg-muted); padding: 3px 7px 2px; }
+  .menu mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+
+  /* B: value quick-picks reuse the Length segmented control */
+  .seg.sm button { padding: 2px 7px; font-size: 11.5px; display: inline-flex; gap: 4px; align-items: center; }
+  .krow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .krow .kname { width: 44px; font-size: 11px; color: var(--fg-muted); }
+  .seg .plus { color: var(--fg-muted); }
+
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 900px; font-size: 13.5px; background: var(--panel-bg); }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← All mockups</a>
+<h1>Add task · keys: pick existing or create new</h1>
+<p class="lead">
+  The add popover gets the same <b>Keys</b> chips as the edit popover. The open question is how to offer the
+  keys and values already used in the plan while still allowing new ones. Sample plan:
+  <code>type</code> (architecture 3, development 6), <code>owner</code> (Jonas 4, Sam 3, Alex 2),
+  <code>team</code> (Frontend 4, Design 3, Core 2).
+</p>
+<div id="frames"></div>
+
+<h2>Recommendation</h2>
+<div class="reco">
+  <h3>A · Two-step combobox: pick the key, then pick the value</h3>
+  <ul>
+    <li><b>One pattern for both questions.</b> Key and value use the same list: existing entries first (most used on top), and a "+ New …" row at the end that is only highlighted when nothing matches.</li>
+    <li><b>Clicking is enough, typing is optional.</b> <i>+ key → owner → Jonas</i> is 3 clicks. Keyboard: type, <kbd>↵</kbd>, type, <kbd>↵</kbd>.</li>
+    <li><b>The "new" tag protects against typos.</b> "Jonsa" shows up as <span class="new">new</span>, so it's obvious it doesn't match anything.</li>
+    <li>It scales to many keys or values (the list filters), unlike B. It's also discoverable, unlike C.</li>
+    <li>Same chip in the edit popover, so it can be reused there later.</li>
+  </ul>
+</div>
+
+<h2>Open questions</h2>
+<ul class="lead">
+  <li><b>Prefill on "+ After"?</b> Copy the predecessor's keys as removable chips. It saves the most clicks, but the user has to notice values they didn't type.</li>
+  <li><b>Values:</b> plain text only, or show a color swatch for the active "Color by" key (shown in A3)?</li>
+</ul>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const I = G.icon;
+  const esc = G.esc;
+  const SW = { architecture: '#a78bfa', development: '#60a5fa' }; // illustrative swatches for the color key
+  const caret = '<span class="caret"></span>';
+
+  /** Storyboard frame with a row of popover states instead of a chart. */
+  function frame({ step, title, text, notes = [], states }) {
+    const sec = document.createElement('section');
+    sec.className = 'frame';
+    sec.innerHTML = `<header><span class="step">${step}</span><div><h3>${title}</h3><p>${text}</p></div></header>
+      <div class="states">${states.map(([cap, html]) => `<div class="state"><div class="cap">${cap}</div>${html}</div>`).join('')}</div>
+      ${notes.length ? `<ol class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ol>` : ''}`;
+    document.querySelector('#frames').append(sec);
+  }
+
+  /** The current add popover with a Keys row; `keys` is pre-rendered chip html. */
+  function pop(keys, { name = 'Bundle size budget' } = {}) {
+    const seg = `<div class="seg">${[1, 2, 3, 5, 10].map((d) => `<button class="${d === 3 ? 'on' : ''}">${d}d</button>`).join('')}</div>`;
+    return `<div class="pop add">
+      <div class="pop-head">${I('after', 14)}<span class="muted">New task after</span><b>Zoom (day/wk/month)</b></div>
+      <label class="field"><input class="name" placeholder="Task name" value="${esc(name)}" /></label>
+      <div class="row"><span class="lbl">Length</span>${seg}</div>
+      <div class="row"><span class="lbl">Section</span><span class="select">Core <span class="muted">▾</span></span></div>
+      <div class="row" style="align-items:flex-start"><span class="lbl" style="padding-top:4px">Keys</span><div class="keys">${keys}</div></div>
+      <div class="pop-foot">
+        <span class="hint"><kbd>↵</kbd> create <kbd>⇧↵</kbd> + next <kbd>Esc</kbd></span>
+        <button class="primary">Create</button>
+      </div>
+    </div>`;
+  }
+
+  const addBtn = `<button class="ghost-btn">${I('plus', 12)} key</button>`;
+  const rm = `<span class="rm">${I('x', 10)}</span>`;
+  /** A finished chip. */
+  const chip = (k, v, { isNew = false, sw = null } = {}) =>
+    `<span class="kv"><span class="k">${k}</span>${sw ? `<span class="sw" style="background:${sw}"></span>` : ''}<span class="v" style="width:auto;padding-right:2px">${isNew ? '<span class="new">new</span>' : ''}${esc(v)}</span>${rm}</span>`;
+  const menu = (items, foot = '') =>
+    `<div class="menu">${items.join('')}${foot ? `<div class="sep"></div><div class="foot">${foot}</div>` : ''}</div>`;
+  const it = (label, n, { hl = false, sw = null } = {}) =>
+    `<div class="it${hl ? ' hl' : ''}">${sw ? `<span class="sw" style="background:${sw}"></span>` : ''}<span>${label}</span><span class="n">${n}</span></div>`;
+  const create = (what, text, hl) => `<div class="it create${hl ? ' hl' : ''}">${I('plus', 12)} New ${what} "${esc(text)}"</div>`;
+
+  // ---------- A: two-step combobox ----------
+  frame({
+    step: 'A',
+    title: 'Two-step combobox (recommended)',
+    text: '"+ key" adds a chip and opens a list of the known keys. Picking one moves the cursor into the value, where a list of that key\'s known values opens. Both lists accept free text, which becomes a "+ New …" row.',
+    notes: [
+      '<b>Key list</b>: only keys this task doesn\'t have yet, sorted by usage. Typing filters. If nothing matches, the "+ New key" row is highlighted, so <kbd>↵</kbd> creates the key.',
+      '<b>Value list</b>: opens on its own after a key is picked. Values are sorted by count, and the count shows what\'s common.',
+      '<b>Exact match wins</b>: typing "sam" highlights the existing "Sam", not a new "sam" (case-insensitive), so near-duplicates aren\'t created by accident.',
+      '<b>Keyboard</b>: <kbd>↑</kbd><kbd>↓</kbd> move, <kbd>↵</kbd>/<kbd>Tab</kbd> accept and go key → value → next "+ key". <kbd>Esc</kbd> closes the list, a second <kbd>Esc</kbd> closes the popover. <kbd>⌫</kbd> on an empty value goes back to the key.',
+    ],
+    states: [
+      ['1 · <b>+ key</b>: known keys', pop(`<span class="kvw"><span class="kv on"><input class="k typing" placeholder="key" /></span>${menu([
+        it('type', '9 tasks', { hl: true }), it('owner', '9 tasks'), it('team', '9 tasks'),
+      ], 'type to filter or create')}</span>`)],
+      ['2 · typed "prio": no match', pop(`<span class="kvw"><span class="kv on"><span class="k" style="background:var(--bg);color:var(--fg)">prio${caret}</span></span>${menu([
+        create('key', 'prio', true),
+      ], '<kbd>↵</kbd> create key')}</span>`)],
+      ['3 · picked <b>owner</b>: known values', pop(`<span class="kvw"><span class="kv on"><span class="k">owner</span><span class="v slot">${caret}value</span></span>${menu([
+        it('Jonas', '4', { hl: true }), it('Sam', '3'), it('Alex', '2'),
+      ], 'type to filter or create')}</span>`)],
+      ['4 · typed "Ma": new value', pop(`<span class="kvw"><span class="kv on"><span class="k">owner</span><span class="v">Ma${caret}</span></span>${menu([
+        create('value', 'Ma', true),
+      ], '<kbd>↵</kbd> use new value')}</span>`)],
+      ['5 · result', pop(`${chip('owner', 'Jonas')}${chip('type', 'development', { sw: SW.development })}${chip('prio', 'high', { isNew: true })}${addBtn}`)],
+    ],
+  });
+
+  // ---------- A variant: one list for key+value ----------
+  frame({
+    step: 'A′',
+    title: 'Variant: jump straight to a pair',
+    text: 'Same as A, but the first list also shows the most common "key: value" pairs, so the usual case is a single click. Typing matches both keys and values ("jo" finds owner: Jonas).',
+    notes: [
+      'Pro: 1 click for the common case. Con: a longer, busier first list, and two kinds of rows to tell apart. Better as a later step than in the first version.',
+    ],
+    states: [
+      ['1 · <b>+ key</b>: keys and common pairs', pop(`<span class="kvw"><span class="kv on"><input class="k typing" placeholder="key or value" /></span>${menu([
+        '<div class="grp">Keys</div>', it('type', '9'), it('owner', '9'), it('team', '9'),
+        '<div class="sep"></div><div class="grp">Common</div>',
+        it('type: development', '6', { sw: SW.development }), it('team: Frontend', '4'), it('owner: Jonas', '4'),
+      ])}</span>`)],
+      ['2 · typed "jo"', pop(`<span class="kvw"><span class="kv on"><span class="k" style="background:var(--bg);color:var(--fg)">jo${caret}</span></span>${menu([
+        it('owner: <mark>Jo</mark>nas', '4', { hl: true }), create('key', 'jo', false),
+      ])}</span>`)],
+    ],
+  });
+
+  // ---------- B: known keys always visible ----------
+  frame({
+    step: 'B',
+    title: 'Known keys shown as empty slots, values as quick-picks',
+    text: 'Every key used in the plan gets a row, with its values as a segmented control (the same one as Length) plus "+" for a new value. "+ key" below the rows adds a new key. Empty rows are not saved.',
+    notes: [
+      'Pro: no lists to open. Everything is visible and 1 click away, and it matches the Length row.',
+      'Con: the popover grows with every key and value in the plan. That\'s fine with 3 keys × 3 values, but not with 10 owners. It needs a fallback (e.g. show the top 4 values and a "…" that opens the A list).',
+      'Click an active pick again to clear it.',
+    ],
+    states: [
+      ['1 · at rest', (() => {
+        const row = (k, vals, on = null) => `<div class="krow"><span class="kname">${k}</span><div class="seg sm">${vals.map((v) => `<button class="${v === on ? 'on' : ''}">${SW[v] ? `<span class="sw" style="background:${SW[v]}"></span>` : ''}${v}</button>`).join('')}<button class="plus">${I('plus', 11)}</button></div></div>`;
+        return pop(`<div style="display:block;width:100%">${row('type', ['architecture', 'development'], 'development')}${row('owner', ['Jonas', 'Sam', 'Alex'])}${row('team', ['Frontend', 'Design', 'Core'])}${addBtn}</div>`);
+      })()],
+      ['2 · "+" on owner: inline new value', (() => {
+        const row = (k, vals, extra = '') => `<div class="krow"><span class="kname">${k}</span><div class="seg sm">${vals.map((v) => `<button>${SW[v] ? `<span class="sw" style="background:${SW[v]}"></span>` : ''}${v}</button>`).join('')}${extra}</div></div>`;
+        return pop(`<div style="display:block;width:100%">${row('type', ['architecture', 'development'])}${row('owner', ['Jonas', 'Sam', 'Alex'], `<span class="kv on" style="margin-left:2px"><span class="v" style="width:44px">Ma${caret}</span></span>`)}${row('team', ['Frontend', 'Design', 'Core'])}${addBtn}</div>`);
+      })()],
+    ],
+  });
+
+  // ---------- C: type key: value ----------
+  frame({
+    step: 'C',
+    title: 'Type "key: value" in one field, with autocomplete',
+    text: 'A single input. Before the colon it completes keys, after the colon it completes values for that key. <kbd>↵</kbd> turns the text into a chip.',
+    notes: [
+      'Pro: the fastest path for keyboard users, and it\'s the same syntax as the markdown file.',
+      'Con: hidden. You have to know the colon syntax, and it doesn\'t help mouse users much. Better as an accelerator inside A (typing "owner: j" in A\'s key field could jump to the value) than as the main UI.',
+    ],
+    states: [
+      ['1 · typed "ow"', pop(`<span class="kvw"><span class="kv on"><span class="k" style="background:var(--bg);color:var(--fg);width:120px">ow${caret}</span></span>${menu([
+        it('<mark>ow</mark>ner', '9', { hl: true }),
+      ], '<kbd>Tab</kbd> complete')}</span>`)],
+      ['2 · typed "owner: s"', pop(`<span class="kvw"><span class="kv on"><span class="k" style="background:var(--bg);color:var(--fg);width:120px">owner: s${caret}</span></span>${menu([
+        it('<mark>S</mark>am', '3', { hl: true }), create('value', 's', false),
+      ])}</span>`)],
+    ],
+  });
+</script>
+</body>
+</html>

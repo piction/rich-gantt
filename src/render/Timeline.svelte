@@ -20,6 +20,7 @@
     addTaskAfter,
     addTaskAt,
     updateTask,
+    keyCatalog,
     type NewTaskDraft,
   } from '../interaction/barEdits';
   import { ICONS } from '../ui/icons';
@@ -82,7 +83,7 @@
     moved: boolean;
   } | null = null;
   let durPreview: number | null = null; // length being typed into the pill
-  let addDraft: NewTaskDraft = { label: '', duration: 1, section: '' };
+  let addDraft: NewTaskDraft = { label: '', duration: 1, section: '', attrs: [] };
   let newStart = ''; // start date of a 'new' (pinned) task
   let newSection = false; // 'new' mode is creating a section (with its first task)
   let pill: FocusPill;
@@ -91,6 +92,14 @@
   const DRAG_THRESHOLD = 4; // px before a press on a selected bar becomes a move
 
   $: selectedTask = selectedId ? doc.tasks.get(selectedId) ?? null : null;
+  // Key/value suggestions for the popovers, and the color key's values on every other task (so
+  // a chip's swatch matches the color its bar will get).
+  $: catalog = mode === 'add' || mode === 'new' || mode === 'edit' ? keyCatalog(doc) : [];
+  $: colorValues = colorKey
+    ? [...doc.tasks.values()]
+        .filter((t) => !(mode === 'edit' && t.id === selectedId))
+        .map((t) => t.metadata?.attrs.get(colorKey!) ?? '')
+    : [];
   $: addPreview =
     mode === 'add' && selectedId
       ? addTaskAfter(doc, selectedId, addDraft)
@@ -371,6 +380,7 @@
       label: '',
       duration: selectedTask.duration || 1, // a milestone's 0d is no useful default
       section: sectionOf(selectedTask.id),
+      attrs: [],
     };
     mode = 'add';
   }
@@ -399,6 +409,7 @@
       label: '',
       duration: 1,
       section: asSection ? '' : section ?? ((first && sectionOf(first)) || doc.sections[0].name),
+      attrs: [],
     };
     mode = 'new';
     await tick(); // bring the ghost bar (and so the popover) into view
@@ -838,6 +849,9 @@
     bind:start={newStart}
     bind:draft={addDraft}
     sections={doc.sections.map((s) => s.name)}
+    {catalog}
+    {colorKey}
+    {colorValues}
     anchor={barEls[addPreview.id] ?? null}
     onCreate={createTask}
     onCancel={() => (mode = null)}
@@ -847,6 +861,9 @@
   <TaskEditor
     task={selectedTask}
     anchor={ringEl}
+    {catalog}
+    {colorKey}
+    {colorValues}
     onSave={(edit) => {
       if (selectedId) onEdit(updateTask(doc, selectedId, edit));
       mode = null;

@@ -12,6 +12,7 @@ import {
   addTaskAt,
   updateTask,
   splitMetadataBody,
+  keyCatalog,
 } from '../../src/interaction/barEdits';
 import { serializeDocument } from '../../src/serializer';
 import type { ParsedDocument } from '../../src/model/types';
@@ -114,7 +115,7 @@ describe('newTaskId', () => {
     expect(newTaskId(doc, 'Foundation work')).toBe('found1');
     expect(newTaskId(doc, 'Q3 & beyond')).toBe('q31');
     expect(newTaskId(doc, '')).toBe('task1');
-    const { doc: d2 } = addTaskAfter(doc, 'a', { label: 'X', duration: 1, section: 'Foundation' });
+    const { doc: d2 } = addTaskAfter(doc, 'a', { label: 'X', duration: 1, section: 'Foundation', attrs: [] });
     expect(newTaskId(d2, 'Foundation')).toBe('found2');
   });
 });
@@ -126,6 +127,7 @@ describe('addTaskAfter', () => {
       label: 'New: thing',
       duration: 2.2,
       section: 'S',
+      attrs: [],
     });
     expect(id).toBe('s1');
     const t = next.tasks.get(id)!;
@@ -146,6 +148,7 @@ describe('addTaskAt', () => {
       label: 'Kickoff',
       duration: 3,
       section: 'S',
+      attrs: [],
     });
     expect(next.tasks.get(id)!.position).toEqual({ kind: 'absolute', date: '2026-01-05' });
     expect(next.sections[0].taskIds).toEqual(['a', 'b', 'c', 'd', id]);
@@ -161,6 +164,7 @@ describe('addTaskAt', () => {
       label: '',
       duration: 1,
       section: '  QA  ',
+      attrs: [],
     });
     expect(next.sections.map((s) => s.name)).toEqual(['S', 'QA']);
     expect(next.sections[1].taskIds).toEqual([id]);
@@ -188,5 +192,32 @@ describe('updateTask / splitMetadataBody', () => {
   it('removes the metadata block when everything is emptied', () => {
     const next = updateTask(makeDoc(), 'a', { label: 'A', attrs: [], notes: '  ' });
     expect(next.tasks.get('a')!.metadata).toBeNull();
+  });
+});
+
+describe('new task keys / keyCatalog', () => {
+  it('writes the draft keys as the new task\'s metadata, dropping blank keys', () => {
+    const { doc: next, id } = addTaskAfter(makeDoc(), 'a', {
+      label: 'X',
+      duration: 1,
+      section: 'S',
+      attrs: [['owner', ' Sam '], ['', 'dropped']],
+    });
+    expect(next.tasks.get(id)!.metadata!.body).toBe('- owner: Sam');
+    const r = parseDocument(serializeDocument(next));
+    expect(r.ok && r.doc.tasks.get(id)!.metadata!.attrs.get('owner')).toBe('Sam');
+    const bare = addTaskAt(makeDoc(), '2026-01-05', { label: 'Y', duration: 1, section: 'S', attrs: [] });
+    expect(bare.doc.tasks.get(bare.id)!.metadata).toBeNull();
+  });
+
+  it('lists used keys and their values, most used first', () => {
+    let doc = makeDoc();
+    doc = updateTask(doc, 'a', { label: 'A', attrs: [['team', 'Core'], ['owner', 'Jo']], notes: '' });
+    doc = updateTask(doc, 'b', { label: 'B', attrs: [['owner', 'Sam']], notes: '' });
+    doc = updateTask(doc, 'c', { label: 'C', attrs: [['owner', 'Sam'], ['team', '']], notes: '' });
+    expect(keyCatalog(doc)).toEqual([
+      { key: 'owner', count: 3, values: [{ value: 'Sam', count: 2 }, { value: 'Jo', count: 1 }] },
+      { key: 'team', count: 2, values: [{ value: 'Core', count: 1 }] },
+    ]);
   });
 });

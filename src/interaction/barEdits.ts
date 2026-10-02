@@ -2,7 +2,7 @@
 // a new ParsedDocument; successors are NOT touched here — they cascade automatically because
 // they are `after` this task and get recomputed by the scheduler.
 
-import type { ParsedDocument, Task, TaskId } from '../model/types';
+import type { ParsedDocument, Task, TaskId, TaskMetadata } from '../model/types';
 import { KV_RE } from '../parser/metadataParser';
 
 function withTask(
@@ -139,6 +139,7 @@ export interface NewTaskDraft {
   label: string;
   duration: number;
   section: string;
+  attrs: [string, string][];
 }
 
 /**
@@ -160,7 +161,7 @@ export function addTaskAfter(
     duration: snapDuration(draft.duration),
     kind: 'task',
     sourceLine: 0,
-    metadata: null,
+    metadata: buildMetadata(id, draft.attrs, ''),
   });
   const insertAfter = (ids: TaskId[]): TaskId[] => {
     const i = ids.indexOf(afterId);
@@ -193,7 +194,7 @@ export function addTaskAt(
     duration: snapDuration(draft.duration),
     kind: 'task',
     sourceLine: 0,
-    metadata: null,
+    metadata: buildMetadata(id, draft.attrs, ''),
   });
   const sections = doc.sections.some((s) => s.name === section)
     ? doc.sections.map((s) => (s.name === section ? { ...s, taskIds: [...s.taskIds, id] } : s))
@@ -220,27 +221,64 @@ export function splitMetadataBody(body: string): MetadataParts {
 }
 
 /**
- * Editor save: label + metadata (keys and free markdown). Keys lose ':' (it ends the key) and
- * blank keys are dropped; an empty result removes the metadata block. The id never changes.
+ * Metadata block from keys + free markdown. Keys lose ':' (it ends the key) and blank keys are
+ * dropped; an empty result is no metadata block at all (null).
  */
-export function updateTask(
-  doc: ParsedDocument,
-  id: TaskId,
-  edit: { label: string } & MetadataParts,
-): ParsedDocument {
-  const attrs = edit.attrs
+function buildMetadata(id: TaskId, rawAttrs: [string, string][], rawNotes: string): TaskMetadata | null {
+  const attrs = rawAttrs
     .map(([k, v]): [string, string] => [
       k.replace(/:/g, '').trim(),
       v.replace(/[\r\n]+/g, ' ').trim(),
     ])
     .filter(([k]) => k !== '');
-  const notes = edit.notes.trim();
+  const notes = rawNotes.trim();
   const body = [attrs.map(([k, v]) => `- ${k}: ${v}`).join('\n'), notes]
     .filter((part) => part !== '')
     .join('\n\n');
+  return body ? { id, attrs: new Map(attrs), body } : null;
+}
+
+/** Editor save: label + metadata (keys and free markdown, see buildMetadata). The id never changes. */
+export function updateTask(
+  doc: ParsedDocument,
+  id: TaskId,
+  edit: { label: string } & MetadataParts,
+): ParsedDocument {
   return withTask(doc, id, (t) => ({
     ...t,
     label: cleanLabel(edit.label) || t.label,
-    metadata: body ? { id, attrs: new Map(attrs), body } : null,
+    metadata: buildMetadata(id, edit.attrs, edit.notes),
   }));
+}
+
+/** A metadata key in use, with how many tasks set it and its distinct values. */
+export interface KeyUsage {
+  key: string;
+  count: number;
+  values: { value: string; count: number }[];
+}
+
+/**
+ * Keys and values already used in the document, most used first (ties keep document order),
+ * for the key/value pickers. Empty values are not offered.
+ */
+export function keyCatalog(doc: ParsedDocument): KeyUsage[] {
+  const keys = new Map<string, { count: number; values: Map<string, number> }>();
+  for (const id of doc.order) {
+    for (const [k, v] of doc.tasks.get(id)?.metadata?.attrs ?? []) {
+      const e = keys.get(k) ?? { count: 0, values: new Map<string, number>() };
+      e.count++;
+      if (v) e.values.set(v, (e.values.get(v) ?? 0) + 1);
+      keys.set(k, e);
+    }
+  }
+  return [...keys]
+    .map(([key, e]) => ({
+      key,
+      count: e.count,
+      values: [...e.values]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count),
+    }))
+    .sort((a, b) => b.count - a.count);
 }

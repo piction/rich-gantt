@@ -3,12 +3,16 @@
   // the raw free-markdown notes, and a jump to the source. The task id is shown, never editable.
   // The maximize button pops it out into a large centered dialog for long-form markdown.
   import type { Task } from '../model/types';
-  import { splitMetadataBody, type MetadataParts } from '../interaction/barEdits';
+  import { splitMetadataBody, type KeyUsage, type MetadataParts } from '../interaction/barEdits';
   import Icon from './Icon.svelte';
+  import KeyChips from './KeyChips.svelte';
   import { floating } from './floating';
 
   export let task: Task;
   export let anchor: Element | null;
+  export let catalog: KeyUsage[];
+  export let colorKey: string | null;
+  export let colorValues: string[];
   export let onSave: (edit: { label: string } & MetadataParts) => void;
   export let onCancel: () => void;
   export let onJumpToSource: () => void;
@@ -74,24 +78,7 @@
 
   <div class="field">
     <span class="lbl">Keys</span>
-    <div class="keys">
-      {#each attrs as attr, i}
-        <span class="kv">
-          <input class="k" bind:value={attr[0]} placeholder="key" size={Math.max(3, attr[0].length)} />
-          <input class="v" bind:value={attr[1]} placeholder="value" />
-          <button
-            class="rm"
-            title="Remove key"
-            on:click={() => (attrs = attrs.filter((_, j) => j !== i))}
-          >
-            <Icon name="x" size={10} />
-          </button>
-        </span>
-      {/each}
-      <button class="add" on:click={() => (attrs = [...attrs, ['', '']])}>
-        <Icon name="plus" size={12} /> key
-      </button>
-    </div>
+    <KeyChips bind:attrs {catalog} {colorKey} {colorValues} />
   </div>
 
   <label class="field notes">
@@ -208,53 +195,6 @@
     width: 100%;
     font-size: 14px;
     font-weight: 600;
-  }
-  .keys {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .kv {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--bg);
-  }
-  .kv input {
-    border: 0;
-    border-radius: 0;
-    padding: 3px 6px;
-    font-size: 11.5px;
-    box-shadow: none;
-  }
-  .kv .k {
-    background: var(--kbd-bg);
-    color: var(--fg-muted);
-  }
-  .kv .v {
-    width: 96px;
-  }
-  .kv:focus-within {
-    border-color: var(--accent);
-  }
-  .rm {
-    padding: 4px 5px;
-    color: var(--fg-muted);
-  }
-  .rm:hover {
-    color: var(--danger);
-  }
-  .add {
-    border: 1px dashed var(--border);
-    border-radius: 6px;
-    padding: 2px 7px;
-    color: var(--fg-muted);
-    font-size: 11.5px;
-    display: inline-flex;
-    gap: 3px;
-    align-items: center;
   }
   .notes {
     display: flex;

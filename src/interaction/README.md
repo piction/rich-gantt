@@ -25,6 +25,7 @@ Bar gestures. Pure model edits live in `barEdits.ts`; the pointer wiring is in
   - **Add after** (`A`): `ui/AddTaskPopover.svelte` + ghost-bar preview of `addTaskAfter`. Id is
     `newTaskId`: first word of the section, ≤5 alphanumerics, plus a unique counter (`found1`).
     `⇧↵` creates and opens another add-after on the new task.
+    The popover also takes metadata keys (see Edit); keys are never copied from the predecessor.
   - **New task** (no selection needed): every section ends with a proposed "+ New task" bar
     (light blue, dashed) at the chart's earliest start; clicking it opens the add popover plus a
     start-date picker, section pre-filled. `N` does the same for the first task's section. `addTaskAt` pins the task to that date and appends it to the section.
@@ -33,6 +34,10 @@ Bar gestures. Pure model edits live in `barEdits.ts`; the pointer wiring is in
     (`addTaskAt` appends a section it doesn't know). Proposals hide while a bar is focused.
   - **Edit** (`↵` / double-click): `ui/TaskEditor.svelte` — label, metadata keys, raw markdown
     notes, jump to source; id is read-only. Pop-out button for a large markdown editor.
+    Keys (here and in the add popover) are `ui/KeyChips.svelte`: "+ key" lists the keys in use
+    (`keyCatalog`, most used first), picking one lists that key's values; free text becomes a
+    "+ New …" row, and keys/values used nowhere else get a `NEW` tag. Values of the "Color by"
+    key show their bar color.
     Saved through `updateTask`.
   - **Delete** (`Del`): `deleteTask` pins direct successors to their current start (as if
     unlinked), so nothing else moves. No confirm and no undo (undo is out of scope).
