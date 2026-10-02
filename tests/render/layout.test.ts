@@ -44,6 +44,23 @@ describe('computeLayout', () => {
     expect(l.width).toBeGreaterThan(0);
   });
 
+  it('ends each section with a proposed bar at the chart start, then a new-section row', () => {
+    const l = layout('week');
+    const r = parseDocument(sample);
+    if (!r.ok) throw new Error('parse failed');
+    const firstX = Math.min(...l.bars.map((b) => b.x));
+    r.doc.sections.forEach((sec, i) => {
+      const band = l.sections[i];
+      const lastY = Math.max(...sec.taskIds.map((id) => l.barsById.get(id)!.y));
+      expect(band.addBar.x).toBe(firstX);
+      expect(band.addBar.y).toBeGreaterThan(lastY);
+      expect(band.addBar.y + band.addBar.h).toBeLessThanOrEqual(band.y + band.height);
+    });
+    const last = l.sections[l.sections.length - 1];
+    expect(l.addSection.y).toBeGreaterThanOrEqual(last.y + last.height);
+    expect(l.addSection.y + l.addSection.h).toBeLessThanOrEqual(l.height);
+  });
+
   it('omits weekend shading at month zoom', () => {
     expect(layout('month').weekends.length).toBe(0);
     expect(layout('day').weekends.length).toBeGreaterThan(0);

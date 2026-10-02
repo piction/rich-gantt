@@ -11,7 +11,6 @@
   import HoverCard from './ui/HoverCard.svelte';
   import SectionCard from './ui/SectionCard.svelte';
   import Timeline from './render/Timeline.svelte';
-  import Icon from './ui/Icon.svelte';
   import type { SectionBand } from './render/layout';
   import {
     sourceText,
@@ -29,7 +28,6 @@
   import type { Task, ScheduledTask } from './model/types';
 
   let codeEditor: CodeEditor;
-  let timeline: Timeline;
 
   // Transient hover state.
   let hoverTask: Task | null = null;
@@ -89,19 +87,10 @@
           <WeekendControl />
           <ColorKeySelect keys={colorKeys} selected={effectiveColorKey} />
           <ColorLegend entries={legend} />
-          <button
-            class="add-task"
-            title="New task (N)"
-            disabled={!$activeDocument?.sections.length}
-            on:click={() => timeline?.openNew()}
-          >
-            <Icon name="plus" size={14} /><span>Task</span>
-          </button>
         </div>
         <div class="viz-canvas">
           {#if $activeDocument && $schedule}
             <Timeline
-              bind:this={timeline}
               doc={$activeDocument}
               schedule={$schedule}
               zoom={$zoom}
@@ -156,26 +145,6 @@
     gap: 12px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
-  }
-  .add-task {
-    margin-left: auto;
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border: 0;
-    border-radius: 6px;
-    padding: 4px 10px 4px 8px;
-    cursor: pointer;
-  }
-  .add-task:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
   .viz-canvas {
     flex: 1;

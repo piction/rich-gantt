@@ -173,29 +173,31 @@ export function addTaskAfter(
 }
 
 /**
- * Add a task pinned to `start` (YYYY-MM-DD), appended at the end of its section. Returns the
- * new document and the generated id.
+ * Add a task pinned to `start` (YYYY-MM-DD), appended at the end of its section. A section that
+ * doesn't exist yet is created at the end (a section only exists through its tasks, so this is
+ * how a new one is made). Returns the new document and the generated id.
  */
 export function addTaskAt(
   doc: ParsedDocument,
   start: string,
   draft: NewTaskDraft,
 ): { doc: ParsedDocument; id: TaskId } {
-  const id = newTaskId(doc, draft.section);
+  const section = draft.section.replace(/[\r\n]+/g, ' ').trim() || 'New section';
+  const id = newTaskId(doc, section);
   const tasks = new Map(doc.tasks);
   tasks.set(id, {
     id,
     label: cleanLabel(draft.label) || 'New task',
-    section: draft.section,
+    section,
     position: { kind: 'absolute', date: start },
     duration: snapDuration(draft.duration),
     kind: 'task',
     sourceLine: 0,
     metadata: null,
   });
-  const sections = doc.sections.map((s) =>
-    s.name === draft.section ? { ...s, taskIds: [...s.taskIds, id] } : s,
-  );
+  const sections = doc.sections.some((s) => s.name === section)
+    ? doc.sections.map((s) => (s.name === section ? { ...s, taskIds: [...s.taskIds, id] } : s))
+    : [...doc.sections, { name: section, taskIds: [id] }];
   return { doc: { ...doc, tasks, sections, order: [...doc.order, id] }, id };
 }
 

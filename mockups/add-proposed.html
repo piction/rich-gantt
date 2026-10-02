@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Add task — proposed-bar iteration (C2)</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  /* A "proposed" bar: shaped like a real bar, but light-blue + dashed = not made yet. */
+  .proposed {
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    box-sizing: border-box; height: 20px; border-radius: 3px;
+    border: 1px dashed var(--accent); color: var(--accent);
+    /* opaque so the svg underneath (row reservation) never shows through */
+    background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--timeline-bg);
+    font: 600 11.5px system-ui, sans-serif; white-space: nowrap; cursor: pointer;
+    opacity: 0.55; transition: opacity 0.12s, box-shadow 0.12s;
+  }
+  .proposed.hot { opacity: 1; border-style: solid; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .proposed.section { justify-content: flex-start; padding: 0 8px; height: 22px; border-radius: 6px; }
+  .proposed.hidden { opacity: 0; }
+  /* the svg only reserves the row; the HTML overlay is the visible placeholder */
+  .bar[data-id^="ph-"] { display: none; }
+  .band { box-sizing: border-box; border-top: 1px dashed var(--accent); opacity: 0.5; }
+  .hint-tip { background: var(--fg); color: var(--bg); font-size: 11px; padding: 4px 7px; border-radius: 6px; white-space: nowrap; }
+  .hint-tip kbd { background: transparent; color: inherit; border-color: currentColor; }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 900px; font-size: 13.5px; background: var(--panel-bg); }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="add-placement.html">← Placement options</a>
+<h1>C2 · Proposed bar as the add button</h1>
+<p class="lead">
+  An iteration on C. Every section ends with a small <b>proposed bar</b>: same height and corner radius
+  as a real bar, but light blue and dashed, and only wide enough for "+ New task". It sits where a new
+  task would land: at the <b>start of the chart</b>, i.e. the earliest start of any task. The button <i>is</i> the preview. Clicking it turns
+  it into the editable ghost bar, the same as "+ After".
+</p>
+<div id="frames"></div>
+
+<h2>Recommendation</h2>
+<div class="reco">
+  <h3>Trailing row (1), with the section placeholder below the last section</h3>
+  <ul>
+    <li>A proposed bar reads as "the next task goes here", in the right section and on the right date, without a toolbar trip.</li>
+    <li>It costs one row per section. If that's too much, the header-row version (4) costs no height but reads less like a bar.</li>
+    <li>Keep the toolbar split button (B) as the always-visible entry point and the home for <kbd>N</kbd>/<kbd>⇧N</kbd>. The proposed bars are the in-context path.</li>
+  </ul>
+</div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const I = G.icon;
+  const PROP_DUR = 3; // days: just wide enough for "+ New task" at week zoom
+  const DATE = 'Mon 14 Sep 2026'; // chart start = earliest start of any task
+
+  /** Chart start: the earliest start day of any task (the proposed start for every new task). */
+  function chartStart(tasks) {
+    const sch = G.schedule(tasks);
+    return Math.min(...tasks.map((t) => sch.get(t.id).start));
+  }
+  const sections = (tasks) => [...new Set(tasks.map((t) => t.section))];
+
+  /** Sample + one invisible row-reserving task per section; the HTML overlay draws the proposed bar. */
+  function withPlaceholders(tasks, skip = []) {
+    const start = chartStart(tasks);
+    const out = [...tasks];
+    for (const sec of sections(tasks)) {
+      if (skip.includes(sec)) continue;
+      out.push({ id: `ph-${sec}`, label: '', section: sec, start, dur: PROP_DUR, after: [], ghost: true });
+    }
+    return out;
+  }
+
+  const proposed = (h, b, { hot = false, hidden = false } = {}) =>
+    G.place(h, `<div class="proposed${hot ? ' hot' : ''}${hidden ? ' hidden' : ''}" style="width:${b.w}px">${I('plus', 12)}New task</div>`,
+      b.x, b.y, { ax: 0, ay: 0 });
+
+  function newSectionRow(h, L) {
+    G.place(h, `<div class="band" style="width:${L.width}px"></div>`, 0, L.height - 4, { ax: 0, ay: 0 });
+    G.place(h, `<div class="proposed section">${I('plus', 12)}New section</div>`, 8, L.height + 2, { ax: 0, ay: 0 });
+    h.style.height = L.height + 34 + 'px';
+  }
+
+  function popover({ section, name = '' }) {
+    const seg = `<div class="seg">${[1, 2, 3, 5, 10].map((d) => `<button class="${d === 1 ? 'on' : ''}">${d}d</button>`).join('')}</div>`;
+    return `<div class="pop add">
+      <div class="pop-head">${I('plus', 14)}<span class="muted">New task in</span><b>${G.esc(section)}</b></div>
+      <label class="field"><input class="name fake-focus" placeholder="Task name" value="${G.esc(name)}" /></label>
+      <div class="row"><span class="lbl">Start</span><span class="select" style="display:inline-flex;gap:6px;align-items:center">${I('calendar', 13)} ${DATE}</span></div>
+      <div class="row"><span class="lbl">Length</span>${seg}</div>
+      <div class="row"><span class="lbl">Section</span><span class="select">${G.esc(section)} <span class="muted">▾</span></span></div>
+      <div class="pop-foot">
+        <span class="hint"><kbd>↵</kbd> create <kbd>⇧↵</kbd> + next <kbd>Esc</kbd></span>
+        <button class="primary">Create</button>
+      </div>
+    </div>`;
+  }
+
+  // 1 — resting
+  {
+    const h = G.frame('#frames', {
+      step: 1,
+      title: 'At rest: one proposed bar per section',
+      text: 'Each section ends with a faint "+ New task" bar at the start of the chart, the earliest start of any task, so all proposals line up in one column. A matching "+ New section" placeholder sits below the last section.',
+      notes: [
+        '<b>Same shape as a bar</b>, so it reads as "a task could be here", not as a toolbar button.',
+        '<b>55 % opacity at rest</b>, so it doesn\'t compete with real bars. Light blue + dashed is the same visual language as the add-after ghost bar.',
+        'Fixed size (≈ 3 days at week zoom). At month zoom it would be a fixed pixel width instead of a day width, so the label always fits.',
+      ],
+    });
+    const L = G.render(h, { tasks: withPlaceholders(G.sample()), dim: false });
+    for (const sec of L.sections) proposed(h, L.bars.get(`ph-${sec.name}`));
+    newSectionRow(h, L);
+  }
+
+  // 2 — hover
+  {
+    const h = G.frame('#frames', {
+      step: 2,
+      title: 'Hover: it firms up',
+      text: 'Hovering turns the outline solid at full opacity with a soft ring. The tooltip names the section and the date it will land on.',
+      notes: ['The cursor is a pointer, and the hover card for real bars is not shown for proposed bars.'],
+    });
+    const L = G.render(h, { tasks: withPlaceholders(G.sample()), dim: false });
+    for (const sec of L.sections) proposed(h, L.bars.get(`ph-${sec.name}`), { hot: sec.name === 'Core' });
+    const b = L.bars.get('ph-Core');
+    G.place(h, `<div class="hint-tip">New task in Core · Mon 14 Sep</div>`, b.cx, b.y - 8);
+    newSectionRow(h, L);
+  }
+
+  // 3 — click
+  {
+    const base = G.sample();
+    const tasks = withPlaceholders(
+      [...base, { id: 'new1', label: 'New task', section: 'Core', start: chartStart(base), dur: 1, after: [], ghost: true }],
+    );
+    const h = G.frame('#frames', {
+      step: 3,
+      title: 'Click: the proposal becomes the ghost bar, and a new proposal appears below',
+      text: 'The clicked placeholder turns into the editable ghost bar (exactly like "+ After"), and the popover opens next to it with section and start filled in. A fresh placeholder moves down one row.',
+      notes: [
+        'Only the name is needed; <kbd>↵</kbd> creates it. Changing Start or Length moves the ghost bar live.',
+        '<kbd>⇧↵</kbd> creates it and opens "+ After" on the new task, so a chain can be typed out without the mouse.',
+        'The placeholder moving down shows the click did something and is ready for the next task.',
+      ],
+    });
+    const L = G.render(h, { tasks, dim: false });
+    for (const sec of L.sections) proposed(h, L.bars.get(`ph-${sec.name}`));
+    const g = L.bars.get('new1');
+    G.place(h, popover({ section: 'Core' }), g.x + 200, g.y - 70, { ax: 0, ay: 0 });
+    newSectionRow(h, L);
+  }
+
+  // 4 — header-row alternative
+  {
+    const h = G.frame('#frames', {
+      step: 4,
+      title: 'Alternative: proposed bar in the section header row (no extra height)',
+      text: 'The placeholder sits in the empty header row, next to the section name, at the chart start. The chart doesn\'t get taller.',
+      notes: [
+        'Pro: zero layout cost, and works for large plans with many sections.',
+        'Con: it is no longer "the next row", so it reads more like a button and less like a pending task. It is also closer to the pinned section labels when scrolled.',
+      ],
+    });
+    const tasks = G.sample();
+    const start = chartStart(tasks);
+    const L = G.render(h, { tasks, dim: false });
+    for (const sec of L.sections) {
+      G.place(h, `<div class="proposed${sec.name === 'Core' ? ' hot' : ''}" style="width:${PROP_DUR * G.PX}px;height:18px">${I('plus', 12)}New task</div>`,
+        L.xOfDay(start), sec.y + 3, { ax: 0, ay: 0 });
+    }
+    newSectionRow(h, L);
+  }
+
+  // 5 — focus mode
+  {
+    const tasks = withPlaceholders(G.sample());
+    const h = G.frame('#frames', {
+      step: 5,
+      title: 'While a bar is focused, the proposals step back',
+      text: 'In focus mode the placeholders fade out completely. The pill\'s "+ After" is the add action there, so two "add" affordances never compete.',
+      notes: ['<kbd>Esc</kbd> or clicking empty space brings them back.'],
+    });
+    const L = G.render(h, { tasks, selected: 'dev3' });
+    for (const sec of L.sections) proposed(h, L.bars.get(`ph-${sec.name}`), { hidden: true });
+    const b = L.bars.get('dev3');
+    G.place(h, G.pill({ link: { kind: 'after', names: ['arch2'] }, dur: '5' }), b.cx, b.y - 10);
+  }
+</script>
+</body>
+</html>

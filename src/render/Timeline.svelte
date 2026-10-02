@@ -47,10 +47,6 @@
 
   let svgEl: SVGSVGElement;
 
-  // Horizontal scroll offset of the timeline container. Section labels are translated by this so
-  // they stay pinned to the left edge instead of scrolling off with the chart content.
-  let scrollLeft = 0;
-
   // End-edge resize drag. While dragging, previewDoc overrides the committed doc for a live preview.
   let drag: { id: string; startDay: number } | null = null;
   let previewDoc: ParsedDocument | null = null;
@@ -88,6 +84,7 @@
   let durPreview: number | null = null; // length being typed into the pill
   let addDraft: NewTaskDraft = { label: '', duration: 1, section: '' };
   let newStart = ''; // start date of a 'new' (pinned) task
+  let newSection = false; // 'new' mode is creating a section (with its first task)
   let pill: FocusPill;
   let ringEl: SVGRectElement | null = null;
   let barEls: Record<string, SVGGElement | null> = {};
@@ -113,22 +110,23 @@
   // bar onto the page background (where its contrast is undefined).
   const LABEL_PAD = 6;
   const ELLIPSIS = '...';
+  const BOLD = '600 12px system-ui, sans-serif';
+  const SMALL = '11px system-ui, sans-serif';
   let measureCtx: CanvasRenderingContext2D | null = null;
-  function textWidth(s: string): number {
-    if (!measureCtx) {
-      measureCtx = document.createElement('canvas').getContext('2d');
-      if (measureCtx) measureCtx.font = '12px system-ui, sans-serif';
-    }
-    return measureCtx ? measureCtx.measureText(s).width : s.length * 6.6;
+  function textWidth(s: string, font = '12px system-ui, sans-serif'): number {
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    if (!measureCtx) return s.length * 6.6;
+    measureCtx.font = font;
+    return measureCtx.measureText(s).width;
   }
-  function fitLabel(b: Bar): string {
-    const max = b.w - 2 * LABEL_PAD;
+  function fitText(text: string, max: number, font?: string): string {
     if (max <= 0) return '';
-    if (textWidth(b.label) <= max) return b.label;
-    let s = b.label;
-    while (s.length && textWidth(s + ELLIPSIS) > max) s = s.slice(0, -1);
+    if (textWidth(text, font) <= max) return text;
+    let s = text;
+    while (s.length && textWidth(s + ELLIPSIS, font) > max) s = s.slice(0, -1);
     return s ? s + ELLIPSIS : '';
   }
+  const fitLabel = (b: Bar): string => fitText(b.label, b.w - 2 * LABEL_PAD);
 
   // Right-aligned duration (e.g. "5d"), shown inside the bar only when the FULL label plus a
   // gap plus the duration all fit — i.e. there is leftover space beyond the label.
@@ -143,6 +141,26 @@
 
   // Section duration shown next to its name; trims float artifacts from working-day spans.
   const fmtDays = (n: number): string => `${Math.round(n * 100) / 100}d`;
+
+  // Section-name column, left of the scrolling timeline: fits the longest "name  12d" up to
+  // COL_MAX (longer names get an ellipsis), and at least the "+ New section" placeholder.
+  const COL_PAD = 10;
+  const COL_GAP = 8; // between a section name and its duration
+  const COL_MIN = 130;
+  const COL_MAX = 220;
+  $: colW = Math.min(
+    COL_MAX,
+    Math.max(
+      COL_MIN,
+      ...layout.sections.map(
+        (s) => 2 * COL_PAD + textWidth(s.name, BOLD) + COL_GAP + textWidth(fmtDays(s.durationDays), SMALL),
+      ),
+    ),
+  );
+  function sectionName(s: SectionBand): string {
+    const dur = s.hasTasks ? COL_GAP + textWidth(fmtDays(s.durationDays), SMALL) : 0;
+    return fitText(s.name, colW - 2 * COL_PAD - dur, BOLD);
+  }
 
   function pointerDay(e: PointerEvent): number {
     const x = e.clientX - svgEl.getBoundingClientRect().left;
@@ -357,19 +375,30 @@
     mode = 'add';
   }
 
-  /** Toolbar "+ Task": a free task, pinned by default to the chart's earliest start. */
-  export async function openNew(): Promise<void> {
-    if (!doc.sections.length) return;
+  /** Id of the task that starts first in the chart (null for an empty chart). */
+  function firstTask(): string | null {
     let first: string | null = null;
-    for (const [id, s] of schedule.tasks) {
-      if (first === null || s.startDay < startOf(first)) first = id;
+    for (const id of schedule.tasks.keys()) {
+      if (first === null || startOf(id) < startOf(first)) first = id;
     }
+    return first;
+  }
+
+  /**
+   * New free task, pinned by default to the chart's earliest start. A section's proposed bar
+   * passes its own section; the `N` key defaults to the first task's. With
+   * `asSection` the popover asks for a new section's name instead (it holds this first task).
+   */
+  async function openNew(section?: string, asSection = false): Promise<void> {
+    const first = firstTask();
+    if (!asSection && !doc.sections.length) return;
     clearFocus();
     newStart = first ? fromEpochDay(startOf(first)) : new Date().toISOString().slice(0, 10);
+    newSection = asSection;
     addDraft = {
       label: '',
       duration: 1,
-      section: (first && sectionOf(first)) || doc.sections[0].name,
+      section: asSection ? '' : section ?? ((first && sectionOf(first)) || doc.sections[0].name),
     };
     mode = 'new';
     await tick(); // bring the ghost bar (and so the popover) into view
@@ -409,7 +438,7 @@
     if (mode) return;
     if (e.key === 'n' || e.key === 'N') {
       e.preventDefault();
-      openNew();
+      openNew(undefined, e.shiftKey);
       return;
     }
     if (!selectedId) {
@@ -477,9 +506,65 @@
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
   class="timeline-scroll"
-  on:scroll={(e) => (scrollLeft = e.currentTarget.scrollLeft)}
+  style:scroll-padding-left="{colW}px"
   on:pointerdown={onBackgroundPointerDown}
 >
+  <div class="canvas" style:width="{colW + layout.width}px">
+  <!-- section-name column: sticky on horizontal scroll, scrolls vertically with the chart -->
+  <svg
+    class="names"
+    class:focusing={selectedId !== null}
+    width={colW}
+    height={layout.height}
+    viewBox={`0 0 ${colW} ${layout.height}`}
+  >
+    <rect width={colW} height={layout.height} class="names-bg" />
+    {#each layout.sections as section, i}
+      {#if i % 2 === 1}
+        <rect y={section.y} width={colW} height={section.height} class="section-band alt" />
+      {/if}
+      {#if section.hasTasks}
+        {@const name = sectionName(section)}
+        <g
+          class="section-label-group"
+          role="button"
+          tabindex="0"
+          aria-label={`${section.name}, ${fmtDays(section.durationDays)}`}
+          on:mouseenter={(e) => onSectionEnter(section, e.currentTarget)}
+          on:mouseleave={onSectionLeave}
+          on:focus={(e) => onSectionEnter(section, e.currentTarget)}
+          on:blur={onSectionLeave}
+        >
+          <text x={COL_PAD} y={section.y + 16} class="section-label">{name}</text>
+          <text
+            x={COL_PAD + textWidth(name, BOLD) + COL_GAP}
+            y={section.y + 16}
+            class="section-dur-text">{fmtDays(section.durationDays)}</text>
+        </g>
+      {:else}
+        <text x={COL_PAD} y={section.y + 16} class="section-label">{sectionName(section)}</text>
+      {/if}
+    {/each}
+    <g
+      class="proposed"
+      role="button"
+      tabindex="-1"
+      on:click={() => openNew(undefined, true)}
+      on:keydown={(e) => e.key === 'Enter' && openNew(undefined, true)}
+    >
+      <rect
+        x={COL_PAD - 4}
+        y={layout.addSection.y}
+        width={colW - 2 * COL_PAD + 8}
+        height={layout.addSection.h}
+        rx="5"
+      />
+      <text x={COL_PAD + 4} y={layout.addSection.y + layout.addSection.h / 2 + 4}>+ New section</text>
+      <title>New section (⇧N)</title>
+    </g>
+    <line x1={colW - 0.5} y1="0" x2={colW - 0.5} y2={layout.height} class="names-edge" />
+  </svg>
+
   <svg
     class="timeline"
     class:dragging={drag !== null}
@@ -646,30 +731,21 @@
       {/each}
     </g>
 
-    <!-- section labels: pinned to the left edge by counter-translating the horizontal scroll,
-         so they stay visible when the chart is scrolled right. Drawn above bars for legibility. -->
-    <g class="section-labels" transform={`translate(${scrollLeft}, 0)`}>
+    <!-- proposed "+ New task" bar ending each section, at the chart start -->
+    <g class="proposed-bars">
       {#each layout.sections as section}
-        {#if section.hasTasks}
-          <g
-            class="section-label-group"
-            role="button"
-            tabindex="0"
-            aria-label={`${section.name}, ${fmtDays(section.durationDays)}`}
-            on:mouseenter={(e) => onSectionEnter(section, e.currentTarget)}
-            on:mouseleave={onSectionLeave}
-            on:focus={(e) => onSectionEnter(section, e.currentTarget)}
-            on:blur={onSectionLeave}
-          >
-            <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
-            <text
-              x={6 + textWidth(section.name) + 8}
-              y={section.y + 16}
-              class="section-dur-text">{fmtDays(section.durationDays)}</text>
-          </g>
-        {:else}
-          <text x="6" y={section.y + 16} class="section-label">{section.name}</text>
-        {/if}
+        {@const a = section.addBar}
+        <g
+          class="proposed"
+          role="button"
+          tabindex="-1"
+          on:click={() => openNew(section.name)}
+          on:keydown={(e) => e.key === 'Enter' && openNew(section.name)}
+        >
+          <rect x={a.x} y={a.y} width={a.w} height={a.h} rx="3" />
+          <text x={a.x + a.w / 2} y={a.y + a.h / 2 + 4} text-anchor="middle">+ New task</text>
+          <title>New task in {section.name} · {formatDayLabel(layout.startDay)}</title>
+        </g>
       {/each}
     </g>
 
@@ -731,6 +807,7 @@
       />
     {/if}
   </svg>
+  </div>
 </div>
 
 {#if selectedTask && !move?.moved && !mode}
@@ -757,6 +834,7 @@
 {#if addPreview && ((selectedTask && mode === 'add') || mode === 'new')}
   <AddTaskPopover
     afterLabel={mode === 'add' ? selectedTask?.label ?? null : null}
+    newSection={mode === 'new' && newSection}
     bind:start={newStart}
     bind:draft={addDraft}
     sections={doc.sections.map((s) => s.name)}
@@ -788,7 +866,56 @@
     height: 100%;
     background: var(--timeline-bg);
   }
+  .canvas {
+    display: flex;
+    align-items: flex-start;
+  }
+  .names {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    flex: none;
+    display: block;
+    font-family: system-ui, sans-serif;
+  }
+  .names-bg {
+    fill: var(--timeline-bg);
+  }
+  .names-edge {
+    stroke: var(--border);
+  }
+  /* proposed (not yet made) items: light blue + dashed, like the add-after ghost bar */
+  .proposed {
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.12s ease;
+  }
+  .proposed rect {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-dasharray: 4 3;
+  }
+  .proposed text {
+    font-size: 11.5px;
+    font-weight: 600;
+    fill: var(--accent);
+  }
+  .proposed:hover,
+  .proposed:focus-visible {
+    opacity: 1;
+    outline: none;
+  }
+  .proposed:hover rect,
+  .proposed:focus-visible rect {
+    stroke-dasharray: none;
+  }
+  /* in focus mode the pill's "+ After" is the add action; the proposals step back */
+  .focusing .proposed {
+    opacity: 0;
+    pointer-events: none;
+  }
   .timeline {
+    flex: none;
     display: block;
     font-family: system-ui, sans-serif;
     touch-action: none;

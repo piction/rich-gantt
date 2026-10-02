@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Add task / section — placement mockups</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  /* toolbar replica (ZoomToggle, WeekendControl, ColorKeySelect, ColorLegend) */
+  .tb { display: flex; align-items: center; gap: 12px; padding: 6px 10px; background: var(--bg); border-top: 1px solid var(--border); font-size: 12px; }
+  .zoom { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .zoom button { border: 0; background: var(--bg); color: var(--fg-muted); padding: 4px 10px; font-size: 12px; }
+  .zoom button + button { border-left: 1px solid var(--border); }
+  .zoom button.active { background: var(--bar-0); color: #fff; }
+  .wk { display: inline-flex; align-items: center; gap: 8px; color: var(--fg-muted); }
+  .sw { width: 30px; height: 16px; border-radius: 999px; background: var(--border); position: relative; }
+  .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); }
+  .sel { border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--fg-muted); }
+  .legend { display: flex; gap: 10px; margin: 0; padding: 0; list-style: none; color: var(--fg-muted); }
+  .legend li { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; }
+  .vsep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 0; }
+
+  /* the "create" family: solid accent = create, everything else in the toolbar = view */
+  .addbtn { display: inline-flex; align-items: center; gap: 5px; border: 0; background: var(--accent); color: #fff; font-weight: 600; font-size: 12px; padding: 4px 10px 4px 8px; border-radius: 6px; cursor: pointer; }
+  :root[data-theme='dark'] .addbtn { color: #06182e; }
+  .split { display: inline-flex; }
+  .split .addbtn:first-child { border-radius: 6px 0 0 6px; }
+  .split .addbtn.caret { border-radius: 0 6px 6px 0; padding: 4px 6px; margin-left: 1px; }
+  .push { margin-left: auto; }
+  .menu { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; font-size: 12.5px; min-width: 190px; }
+  .menu div { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+  .menu div.hot { background: var(--kbd-bg); }
+  .menu kbd { margin-left: auto; }
+  .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* in-chart affordances: dashed accent "ghost" buttons, same family as the ghost bar preview */
+  .ghost-add { display: inline-flex; align-items: center; gap: 4px; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 11.5px; padding: 2px 8px 2px 6px; border-radius: 6px; white-space: nowrap; }
+  .ghost-add.round { padding: 2px; border-radius: 50%; }
+  .ghost-add.faint { opacity: 0.55; }
+  .fab { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 10px 16px 10px 12px; font-weight: 600; font-size: 13px; box-shadow: var(--shadow); }
+  :root[data-theme='dark'] .fab { color: #06182e; }
+  .hint-tip { background: var(--fg); color: var(--bg); font-size: 11px; padding: 4px 7px; border-radius: 6px; white-space: nowrap; }
+  .hint-tip kbd { background: transparent; color: inherit; border-color: currentColor; }
+  .dayline { width: 0; border-left: 1.5px dashed var(--accent); }
+  .badge-new { font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 5px; margin-left: auto; }
+  .ghost-band { border: 1.5px dashed var(--accent); border-radius: 6px; background: var(--accent-soft); opacity: 0.6; }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 900px; font-size: 13.5px; background: var(--panel-bg); }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>Add task / add section — placement</h1>
+<p class="lead">
+  Where does "create" live so it is <b>close to the other controls</b> yet <b>clearly distinct</b>
+  from them? Rule used throughout: <b>solid accent = create</b>, outlined/muted = view settings;
+  in-chart create affordances use the <b>dashed accent</b> style of the ghost-bar preview, so
+  "dashed blue" always means "something new goes here".
+</p>
+<div id="frames"></div>
+
+<p class="lead"><b>Iteration on C:</b> <a href="add-proposed.html">C2 · proposed bar as the add button →</a></p>
+
+<h2>Comparison</h2>
+<table class="cmp">
+  <tr><th></th><th>0 · Right</th><th>A · Leading</th><th>B · Split</th><th>C · In-chart</th><th>D · FAB</th><th>E · Dbl-click</th></tr>
+  <tr><td>Close to other controls</td><td class="bad">No</td><td class="good">Yes</td><td class="good">Yes</td><td class="meh">In context instead</td><td class="bad">No</td><td class="good">Where you look</td></tr>
+  <tr><td>Distinct from view controls</td><td class="good">Yes</td><td class="good">Fill + divider</td><td class="good">Fill + divider</td><td class="good">Dashed</td><td class="good">Very</td><td class="meh">Invisible</td></tr>
+  <tr><td>Discoverable</td><td class="meh">OK</td><td class="good">Good</td><td class="good">Good</td><td class="meh">Hover only</td><td class="good">Good</td><td class="bad">Hint only</td></tr>
+  <tr><td>Infers section / date</td><td class="bad">No</td><td class="bad">No</td><td class="bad">No</td><td class="good">Section</td><td class="bad">No</td><td class="good">Both</td></tr>
+  <tr><td>Covers new section</td><td class="bad">—</td><td class="meh">2nd button</td><td class="good">Menu</td><td class="good">Bottom row</td><td class="meh">Speed-dial</td><td class="bad">—</td></tr>
+  <tr><td>Covers bars / clutter</td><td class="good">No</td><td class="good">No</td><td class="good">No</td><td class="good">No</td><td class="bad">Yes</td><td class="good">No</td></tr>
+</table>
+
+<h2>Recommendation</h2>
+<div class="reco">
+  <h3>B (leading split button) + C (in-chart "+") — E later as an extra</h3>
+  <ul>
+    <li><b>B</b> is the always-visible entry point: first in the toolbar, next to Zoom, set apart by its fill and a divider. The ▾ menu gives "New section" a home without adding a second button.</li>
+    <li><b>C</b> is the in-context shortcut. "+" next to a section name pre-fills that section, and the "+ Section" row at the bottom matches the menu entry. Both use the same popover.</li>
+    <li><b>E</b> (double-click empty space) is the fastest path for power users and fills in both section and date. It is invisible, so it should never be the only way in.</li>
+    <li><b>Keys:</b> <kbd>N</kbd> new task, <kbd>⇧N</kbd> new section, <kbd>A</kbd> add-after on the focused bar.</li>
+  </ul>
+</div>
+
+<h2>Constraint: a section can't exist empty</h2>
+<p class="lead">
+  The parser only creates a section when a task line is attached to it, so an empty
+  <code>section X</code> disappears after serialize → re-parse. That's why <b>"New section" always
+  creates its first task too</b>: same popover, with a section-name field on top. This turns out to be
+  good UX anyway, because there are no empty, invisible sections to manage.
+</p>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const I = G.icon;
+
+  const LEGEND = [['architecture', 0], ['development', 1], ['testing', 2]];
+  const controls = `
+    <div class="zoom"><button>day</button><button class="active">week</button><button>month</button></div>
+    <label class="wk"><span class="sw"></span>Exclude weekends</label>
+    <span class="sel">Color: type ▾</span>
+    <ul class="legend">${LEGEND.map(([n, k]) => `<li><span class="swatch" style="background:var(--bar-${k})"></span>${n}</li>`).join('')}</ul>`;
+  const addBtn = (extra = '') => `<button class="addbtn ${extra}">${I('plus', 14)}<span>Task</span></button>`;
+  const splitBtn = `<span class="split">${addBtn()}<button class="addbtn caret">▾</button></span>`;
+
+  /** Storyboard frame with a toolbar replica between the header and the chart. */
+  function tbFrame(opts, toolbar) {
+    const h = G.frame('#frames', opts);
+    const sec = h.closest('.frame');
+    if (toolbar !== null) sec.querySelector('.stage-scroll').insertAdjacentHTML('beforebegin', `<div class="tb">${toolbar}</div>`);
+    return h;
+  }
+
+  const DATE = 'Mon 14 Sep 2026';
+  function newPop({ section = 'Foundation', newSection = false, name = '' } = {}) {
+    const seg = `<div class="seg">${[1, 2, 3, 5, 10].map((d) => `<button class="${d === 1 ? 'on' : ''}">${d}d</button>`).join('')}</div>`;
+    const head = newSection
+      ? `${I('plus', 14)}<span class="muted">New section</span>`
+      : `${I('plus', 14)}<span class="muted">New task</span>`;
+    const top = newSection
+      ? `<label class="field"><span class="lbl">Section</span><input class="name fake-focus" value="${G.esc(section)}" /></label>
+         <label class="field"><span class="lbl">First task</span><input class="name" placeholder="Task name" value="${G.esc(name)}" /></label>`
+      : `<label class="field"><input class="name fake-focus" placeholder="Task name" value="${G.esc(name)}" /></label>`;
+    return `<div class="pop add">
+      <div class="pop-head">${head}</div>
+      ${top}
+      <div class="row"><span class="lbl">Start</span><span class="select" style="display:inline-flex;gap:6px;align-items:center">${I('calendar', 13)} ${DATE}</span></div>
+      <div class="row"><span class="lbl">Length</span>${seg}</div>
+      ${newSection ? '' : `<div class="row"><span class="lbl">Section</span><span class="select">${G.esc(section)} <span class="muted">▾</span></span></div>`}
+      <div class="pop-foot">
+        <span class="hint"><kbd>↵</kbd> create <kbd>⇧↵</kbd> + after <kbd>Esc</kbd></span>
+        <button class="primary">Create</button>
+      </div>
+    </div>`;
+  }
+
+  const ghost = (section, start = 0, label = 'New task') =>
+    ({ id: 'new1', label, section, start, dur: 1, after: [], ghost: true });
+
+  // Section-label metrics (mirror mock.js: label at x=10, y=sec.y+16, 12px/600)
+  let ctx;
+  const labelW = (s) => {
+    ctx = ctx || document.createElement('canvas').getContext('2d');
+    ctx.font = '600 12px system-ui, sans-serif';
+    return ctx.measureText(s).width;
+  };
+
+  // 0 — current
+  {
+    const h = tbFrame({
+      step: 0,
+      title: 'Current — "+ Task" pushed to the far right',
+      text: 'What is built now. Clearly separate, but on a wide screen it sits ~800 px from the controls, past the legend, and the legend grows with the color key.',
+      notes: ['The eye scans the toolbar left → right and stops at the legend; the button is the last thing it finds.'],
+    }, `${controls}<span class="push"></span>${addBtn()}`);
+    G.render(h, { tasks: G.sample() });
+  }
+
+  // A — leading
+  {
+    const h = tbFrame({
+      step: 'A',
+      title: 'Leading primary button',
+      text: '"+ Task" moves to the start of the toolbar, followed by a divider, then the view controls. Create comes first; everything after the divider only changes the view.',
+      notes: [
+        'Close to Zoom (no long mouse trip), and it is the first thing you read in the row.',
+        'Kept distinct by its <b>fill</b> (the only solid button in the row) and the <b>divider</b>.',
+        'New section would need a second button here ("+ Section"), which is the weak spot of this option. See B.',
+      ],
+    }, `${addBtn()}<span class="vsep"></span>${controls}`);
+    G.render(h, { tasks: G.sample() });
+  }
+
+  // B — split button with menu
+  {
+    const h = tbFrame({
+      step: 'B',
+      title: 'Leading split button: "+ Task ▾"',
+      text: 'Same spot as A. The main part creates a task in one click; the ▾ opens a small menu that also holds "New section". One button covers the whole create family.',
+      notes: [
+        'Common pattern (GitHub "New ▾", Jira "Create").',
+        'The menu lists the shortcuts, so <kbd>N</kbd> / <kbd>⇧N</kbd> are easy to discover.',
+        'Either entry opens the same popover, anchored to the ghost bar it previews.',
+      ],
+    }, `${splitBtn}<span class="vsep"></span>${controls}`);
+    G.render(h, { tasks: G.sample() });
+    G.place(h, `<div class="menu">
+      <div class="hot">${I('plus', 14)} New task <kbd>N</kbd></div>
+      <div>${I('plus', 14)} New section <kbd>⇧N</kbd></div>
+    </div>`, 10, -62, { ax: 0, ay: 0 });
+  }
+
+  // C — in-chart
+  {
+    const h = tbFrame({
+      step: 'C',
+      title: 'In-chart: "+" on the section label, "+ Section" at the bottom',
+      text: 'Hovering a section label shows a small dashed "+" right after the day count; clicking it opens the popover with that section filled in. A faint "+ Section" row is always visible below the last section.',
+      notes: [
+        'Creates the task where it belongs, with no section to pick. Start defaults to the section\'s first task.',
+        'Dashed accent is the ghost-bar style: "a new thing goes here".',
+        'Weak spot: hover-only, so it is not discoverable on its own. Pair it with B.',
+      ],
+    }, `${splitBtn}<span class="vsep"></span>${controls}`);
+    const L = G.render(h, { tasks: G.sample() });
+    L.sections.forEach((sec) => {
+      const hot = sec.name === 'Core';
+      G.place(h, `<span class="ghost-add round${hot ? '' : ' faint'}" style="${hot ? '' : 'visibility:hidden'}">${I('plus', 12)}</span>`,
+        10 + labelW(sec.name) + 8, sec.y + 12, { ax: 0, ay: -0.5 });
+      if (hot) G.place(h, `<div class="hint-tip">Add task to Core <kbd>N</kbd></div>`, 10 + labelW(sec.name) + 18, sec.y - 2, { ax: -0.5, ay: -1 });
+    });
+    G.place(h, `<span class="ghost-add faint">${I('plus', 12)} Section</span>`, 10, L.height - 4, { ax: 0, ay: 0 });
+    G.callout(h, 1, 10 + labelW('Core') + 44, L.sections[1].y + 12);
+    G.callout(h, 2, 100, L.height + 7);
+  }
+
+  // D — FAB
+  {
+    const h = tbFrame({
+      step: 'D',
+      title: 'Floating action button on the canvas',
+      text: 'A round "+ Task" pinned to the bottom-right of the timeline viewport (it does not scroll with the chart). It could expand into a speed-dial with "New section".',
+      notes: [
+        'Very visible and very distinct, but it is a mobile pattern and covers bars at the bottom right, which is exactly where a plan grows.',
+        'Still far from the other controls. Not recommended for a desktop editor.',
+      ],
+    }, controls);
+    const L = G.render(h, { tasks: G.sample() });
+    G.place(h, `<button class="fab">${I('plus', 16)} Task</button>`, L.width - 16, L.height - 4, { ax: -1, ay: -1 });
+  }
+
+  // E — double-click empty space
+  {
+    const tasks = G.sample();
+    tasks.push(ghost('Core', 13));
+    const h = tbFrame({
+      step: 'E',
+      title: 'Direct: double-click empty space in a section',
+      text: 'Hovering empty space in a section shows a dashed day line. Double-clicking drops a ghost bar on that day in that section and opens the popover. Section <i>and</i> date are both inferred.',
+      notes: [
+        'The fastest path, and spatial like move/resize. Matches the "spatial things stay on the bar" principle.',
+        'Invisible until you know it, so it is an accelerator, not the main entry point. A first-run hint or the tooltip on B can teach it.',
+        'Single-click on empty space keeps its meaning (clear focus), so nothing changes for existing users.',
+      ],
+    }, `${splitBtn}<span class="vsep"></span>${controls}`);
+    const L = G.render(h, { tasks, dim: false });
+    const b = L.bars.get('new1');
+    const core = L.sections[1];
+    G.place(h, `<div class="dayline" style="height:${core.h}px"></div>`, b.x, core.y, { ax: 0, ay: 0 });
+    G.place(h, `<div class="hint-tip">Double-click: new task in Core · Wed 1 Oct</div>`, b.x, core.y - 4, { ax: -0.5, ay: -1 });
+    G.place(h, newPop({ section: 'Core' }).replace(DATE, 'Wed 1 Oct 2026'), b.x + b.w + 14, core.y, { ax: 0, ay: 0 });
+  }
+
+  // F — new section flow
+  {
+    const tasks = G.sample();
+    tasks.push(ghost('QA', 0, 'Smoke tests'));
+    const h = tbFrame({
+      step: 'F',
+      title: 'New section: same popover, section name on top',
+      text: 'From "New section ⇧N" (B), "+ Section" (C), or "+ New section…" in any section dropdown. A dashed band previews where the section will go (at the end), with its first task as a ghost bar.',
+      notes: [
+        '<b>Same family:</b> same popover, same Start/Length rows, same ghost preview. Only the head and the extra field differ.',
+        'The section comes with a first task because empty sections can\'t be stored (see the constraint below). The task name may be left empty, giving "New task".',
+        '<b>Shortcut from any task popover:</b> the Section dropdown ends with "+ New section…", which turns the dropdown into a text field in place.',
+      ],
+    }, `${splitBtn}<span class="vsep"></span>${controls}`);
+    const L = G.render(h, { tasks, dim: false });
+    const qa = L.sections[L.sections.length - 1];
+    G.place(h, `<div class="ghost-band" style="width:${L.width - 8}px;height:${qa.h - 2}px"></div>`, 4, qa.y + 1, { ax: 0, ay: 0 });
+    const b = L.bars.get('new1');
+    G.place(h, newPop({ section: 'QA', newSection: true, name: 'Smoke tests' }), b.x + b.w + 16, qa.y - 120, { ax: 0, ay: 0 });
+    // the dropdown alternative
+    G.place(h, `<div class="menu">
+      <div>Foundation</div><div>Core</div><div>Integration</div><hr/>
+      <div class="hot" style="color:var(--accent)">${I('plus', 14)} New section…</div>
+    </div>`, b.x + b.w + 360, qa.y - 120, { ax: 0, ay: 0 });
+    G.callout(h, 1, b.x + b.w + 350, qa.y - 110);
+  }
+</script>
+</body>
+</html>

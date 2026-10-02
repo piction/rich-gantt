@@ -155,6 +155,18 @@ describe('addTaskAt', () => {
       date: '2026-01-05',
     });
   });
+
+  it('creates a missing section at the end, holding the new task', () => {
+    const { doc: next, id } = addTaskAt(makeDoc(), '2026-01-05', {
+      label: '',
+      duration: 1,
+      section: '  QA  ',
+    });
+    expect(next.sections.map((s) => s.name)).toEqual(['S', 'QA']);
+    expect(next.sections[1].taskIds).toEqual([id]);
+    const r = parseDocument(serializeDocument(next));
+    expect(r.ok && r.doc.sections.map((s) => s.name)).toEqual(['S', 'QA']);
+  });
 });
 
 describe('updateTask / splitMetadataBody', () => {

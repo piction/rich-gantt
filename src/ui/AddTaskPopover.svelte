@@ -1,7 +1,8 @@
 <script lang="ts">
   // "+ After" bootstrap: asks only for a name; length and section default to the focused
   // task's. The timeline previews the draft as a ghost bar (this popover is anchored to it).
-  // Without `afterLabel` it is the toolbar's "+ Task": a free task pinned to a bound `start`.
+  // Without `afterLabel` it is "+ New task": a free task pinned to a bound `start`. With
+  // `newSection` it creates a section: its name is typed on top and the task is its first.
   import type { NewTaskDraft } from '../interaction/barEdits';
   import { isValidDateString } from '../compute/dateMath';
   import Icon from './Icon.svelte';
@@ -9,6 +10,7 @@
 
   export let afterLabel: string | null = null;
   export let start = ''; // bound, YYYY-MM-DD; only used without afterLabel
+  export let newSection = false;
   export let draft: NewTaskDraft; // bound: edits drive the ghost-bar preview
   export let sections: string[];
   export let anchor: Element | null;
@@ -50,10 +52,15 @@
     {#if afterLabel}
       <Icon name="after" size={14} /><span class="muted">New task after</span><b>{afterLabel}</b>
     {:else}
-      <Icon name="plus" size={14} /><span class="muted">New task</span>
+      <Icon name="plus" size={14} /><span class="muted">{newSection ? 'New section' : 'New task'}</span>
     {/if}
   </div>
-  <input class="name" placeholder="Task name" bind:value={draft.label} use:focusInput />
+  {#if newSection}
+    <input class="name" placeholder="Section name" bind:value={draft.section} use:focusInput />
+    <input class="name" placeholder="First task name" bind:value={draft.label} />
+  {:else}
+    <input class="name" placeholder="Task name" bind:value={draft.label} use:focusInput />
+  {/if}
   {#if !afterLabel}
     <div class="row">
       <span class="lbl">Start</span>
@@ -68,12 +75,14 @@
       {/each}
     </div>
   </div>
-  <div class="row">
-    <span class="lbl">Section</span>
-    <select bind:value={draft.section}>
-      {#each sections as s}<option value={s}>{s}</option>{/each}
-    </select>
-  </div>
+  {#if !newSection}
+    <div class="row">
+      <span class="lbl">Section</span>
+      <select bind:value={draft.section}>
+        {#each sections as s}<option value={s}>{s}</option>{/each}
+      </select>
+    </div>
+  {/if}
   <div class="foot">
     <span class="hint"><kbd>↵</kbd> create <kbd>⇧↵</kbd> + next <kbd>Esc</kbd></span>
     <button class="primary" on:click={() => onCreate(false)}>Create</button>

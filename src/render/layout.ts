@@ -21,6 +21,10 @@ export interface LayoutConfig {
 // the gap rather than overlapping (and stealing clicks from) the neighbouring bars.
 const SEAM_GAP = 9;
 
+// Width of the "+ New task" proposed bar ending each section: a fixed pixel size, so the label
+// fits at every zoom.
+export const ADD_BAR_W = 96;
+
 export const DEFAULT_CONFIG: LayoutConfig = {
   rowHeight: 28,
   sectionHeaderHeight: 24,
@@ -76,6 +80,14 @@ export interface SectionBand {
   startDate: string; // YYYY-MM-DD of the earliest task start ('' when the section is empty)
   endDate: string; // YYYY-MM-DD of the latest task end ('' when the section is empty)
   hasTasks: boolean;
+  addBar: Rect; // proposed "+ New task" bar on its own trailing row, at the chart start
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface AxisTick {
@@ -93,6 +105,7 @@ export interface Layout {
   height: number;
   headerHeight: number;
   t0: number;
+  startDay: number; // whole day of the earliest task start (where proposed bars sit)
   pxPerDay: number;
   weekendDayScale: number;
   bars: Bar[];
@@ -102,6 +115,7 @@ export interface Layout {
   sections: SectionBand[];
   ticks: AxisTick[];
   weekends: WeekendBand[];
+  addSection: Rect; // proposed "+ New section" row below the last section (y/h only; x is 0)
 }
 
 export function computeLayout(
@@ -121,11 +135,12 @@ export function computeLayout(
     ? Math.min(...scheduled.map((s) => s.startDay))
     : 0;
   const maxEnd = scheduled.length ? Math.max(...scheduled.map((s) => s.endDay)) : 1;
-  const t0 = Math.floor(minStart) - config.padDays;
+  const startDay = Math.floor(minStart);
+  const t0 = startDay - config.padDays;
   const t1 = Math.ceil(maxEnd) + config.padDays;
 
   const x = (day: number) => dayToX(day, t0, pxPerDay, weekendDayScale);
-  const width = x(t1);
+  const width = Math.max(x(t1), x(startDay) + ADD_BAR_W + pxPerDay);
 
   // Bars are colored by a single metadata attribute (Design 1); one scale for the whole doc
   // keeps a value's color identical across sections. The key defaults to the first metadata
@@ -144,11 +159,11 @@ export function computeLayout(
   const sections: SectionBand[] = [];
   const junctions: Junction[] = [];
   let y = config.headerHeight;
+  const bh = config.rowHeight - 2 * config.barPadY;
 
   doc.sections.forEach((section) => {
     const bandStart = y;
     y += config.sectionHeaderHeight;
-    const bh = config.rowHeight - 2 * config.barPadY;
     let rowTop = y; // top of the current open row
     let rowTail: string | null = null; // last non-milestone id placed on the current row
     let hasRow = false;
@@ -229,6 +244,8 @@ export function computeLayout(
         ? workingDaysBetween(secMinStart, secMaxEnd)
         : secMaxEnd - secMinStart
       : 0;
+    const addBar = { x: x(startDay), y: y + config.barPadY, w: ADD_BAR_W, h: bh };
+    y += config.rowHeight;
     sections.push({
       name: section.name,
       y: bandStart,
@@ -238,8 +255,11 @@ export function computeLayout(
       startDate: secStartStr,
       endDate: secEndStr,
       hasTasks,
+      addBar,
     });
   });
+  const addSection = { x: 0, y: y + config.barPadY, w: 0, h: bh };
+  y += config.rowHeight;
 
   const height = Math.max(y, config.headerHeight + config.rowHeight);
 
@@ -276,6 +296,7 @@ export function computeLayout(
     height,
     headerHeight: config.headerHeight,
     t0,
+    startDay,
     pxPerDay,
     weekendDayScale,
     bars,
@@ -285,6 +306,7 @@ export function computeLayout(
     sections,
     ticks,
     weekends,
+    addSection,
   };
 }
 
