@@ -20,6 +20,13 @@ Bar gestures. Pure model edits live in `barEdits.ts`; the pointer wiring is in
     the task to an absolute date, so `after` links are cut — previewed as a red dashed edge with
     a scissors badge plus a readout. Dropping back on the original day cancels. The pill's
     link-chip ✕ unlinks in place.
+  - **Multi-select move**: `⇧`/`⌘`/`Ctrl`-click adds a bar to the selection or takes it out;
+    dragging on empty timeline space draws a rubber band that selects every bar it touches
+    (`⇧` adds to the current selection; the view auto-scrolls near the edges); `⇧↑`/`⇧↓` adds
+    the row above/below. With ≥ 2 bars `ui/GroupPill.svelte` replaces the pill. Dragging any
+    selected bar, or `←`/`→`, moves the group: `moveTasks` keeps links between members and cuts
+    links from outside (members left without a predecessor are pinned). A plain click on a
+    group member focuses just that bar. Moving is the only group action.
   - **Length**: pill stepper / `+` `−`, or type digits while focused (`7`, `7.5`, `2w`); live
     preview, `↵` commits, `Esc` reverts. Same `setDuration` as the end-edge drag.
   - **Add after** (`A`): `ui/AddTaskPopover.svelte` + ghost-bar preview of `addTaskAfter`. Id is

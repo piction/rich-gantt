@@ -6,6 +6,7 @@ import {
   addDependency,
   canAddDependency,
   moveTask,
+  moveTasks,
   deleteTask,
   newTaskId,
   addTaskAfter,
@@ -90,6 +91,33 @@ describe('moveTask (focus-mode move / unlink)', () => {
     const next = moveTask(doc, 'b', '2026-01-10');
     expect(next.tasks.get('b')!.position).toEqual({ kind: 'absolute', date: '2026-01-10' });
     expect(computeSchedule(next).tasks.get('c')!.start).toBe('2026-01-12'); // successor cascades
+  });
+});
+
+describe('moveTasks (multi-select group move)', () => {
+  const shifted = (doc: ParsedDocument) => {
+    const s = computeSchedule(doc);
+    return (id: string) => {
+      const d = new Date(s.tasks.get(id)!.start + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 3);
+      return d.toISOString().slice(0, 10);
+    };
+  };
+
+  it('keeps links inside the group, cuts links into it, pins the group roots', () => {
+    const doc = makeDoc();
+    const next = moveTasks(doc, ['b', 'c', 'd'], shifted(doc));
+    expect(next.tasks.get('b')!.position).toEqual({ kind: 'absolute', date: '2026-01-06' }); // a→b cut
+    expect(next.tasks.get('c')!.position).toEqual({ kind: 'after', ids: ['b'] }); // internal, kept
+    expect(next.tasks.get('d')!.position).toEqual({ kind: 'absolute', date: '2026-03-04' });
+    expect(computeSchedule(next).tasks.get('c')!.start).toBe('2026-01-08');
+    expect(next.tasks.get('a')).toBe(doc.tasks.get('a')); // outside the group: untouched
+  });
+
+  it('a fan-in member keeps only its predecessors inside the group', () => {
+    const doc = addDependency(makeDoc(), 'd', 'c'); // c: after b d
+    const next = moveTasks(doc, ['c', 'd'], shifted(doc));
+    expect(next.tasks.get('c')!.position).toEqual({ kind: 'after', ids: ['d'] });
   });
 });
 

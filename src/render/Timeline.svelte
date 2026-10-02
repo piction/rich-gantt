@@ -16,6 +16,7 @@
     addDependency,
     canAddDependency,
     moveTask,
+    moveTasks,
     deleteTask,
     addTaskAfter,
     addTaskAt,
@@ -25,6 +26,7 @@
   } from '../interaction/barEdits';
   import { ICONS } from '../ui/icons';
   import FocusPill from '../ui/FocusPill.svelte';
+  import GroupPill from '../ui/GroupPill.svelte';
   import AddTaskPopover from '../ui/AddTaskPopover.svelte';
   import TaskEditor from '../ui/TaskEditor.svelte';
   import { floating } from '../ui/floating';
@@ -47,6 +49,7 @@
   export let onJumpToSource: (line: number) => void = () => {};
 
   let svgEl: SVGSVGElement;
+  let scrollEl: HTMLDivElement;
 
   // End-edge resize drag. While dragging, previewDoc overrides the committed doc for a live preview.
   let drag: { id: string; startDay: number } | null = null;
@@ -71,17 +74,34 @@
   // Focus mode: a clicked bar body is selected and gets the action pill. `mode` is the open
   // popover (add-after / new pinned task / edit). Body-dragging a selected bar moves it (`move`), which pins it to
   // an absolute date and so breaks its `after` links — previewed as cut arrows before release.
-  let selectedId: string | null = null;
+  // Multi-select (⇧/⌘-click, or a rubber band on empty space) selects several bars; dragging one
+  // of them moves the whole group (links inside the group are kept). Moving is the only group action.
+  let selection: string[] = [];
+  let selectedId: string | null = null; // the single focused task; null when 0 or ≥ 2 are selected
   let mode: 'add' | 'new' | 'edit' | null = null;
   let move: {
-    id: string;
+    id: string; // the grabbed bar
+    ids: string[]; // every bar that moves (the selection)
     x0: number;
     grab: number; // pointer day − bar start day, so the bar doesn't jump under the cursor
-    origStart: number; // whole start day before the move
-    origAfter: string[];
-    origin: { x: number; y: number; w: number; h: number };
+    origStart: number; // whole start day of the grabbed bar before the move
+    cuts: { from: string; to: string }[]; // `after` links from outside the group, cut by the move
+    origins: { x: number; y: number; w: number; h: number }[];
     moved: boolean;
   } | null = null;
+  // Rubber band on empty timeline space; `base` is the selection it adds to (⇧ held at press).
+  let marquee: {
+    x0: number;
+    y0: number;
+    x: number;
+    y: number;
+    cx0: number; // client coords of the press, for the drag threshold
+    cy0: number;
+    base: string[];
+    active: boolean;
+  } | null = null;
+  let addKey = false; // ⇧/⌘/Ctrl held: a bar click adds to / removes from the selection
+  let groupBoxEl: SVGRectElement | null = null;
   let durPreview: number | null = null; // length being typed into the pill
   let addDraft: NewTaskDraft = { label: '', duration: 1, section: '', attrs: [] };
   let newStart = ''; // start date of a 'new' (pinned) task
@@ -92,6 +112,9 @@
   const DRAG_THRESHOLD = 4; // px before a press on a selected bar becomes a move
 
   $: selectedTask = selectedId ? doc.tasks.get(selectedId) ?? null : null;
+  $: selectedSet = new Set(selection);
+  $: multi = selection.length > 1;
+  $: groupBox = multi ? boundsOf(layout, selection) : null;
   // Key/value suggestions for the popovers, and the color key's values on every other task (so
   // a chip's swatch matches the color its bar will get).
   $: catalog = mode === 'add' || mode === 'new' || mode === 'edit' ? keyCatalog(doc) : [];
@@ -222,9 +245,22 @@
     if (move) {
       if (!move.moved && Math.abs(e.clientX - move.x0) < DRAG_THRESHOLD) return;
       move.moved = true;
-      const start = Math.round(pointerDay(e) - move.grab);
+      const n = Math.round(pointerDay(e) - move.grab) - move.origStart;
       // Dropping back on the original day is a cancel (and keeps any `after` link).
-      previewDoc = start === move.origStart ? null : moveTask(doc, move.id, fromEpochDay(start));
+      previewDoc = n === 0 ? null : moveTasks(doc, move.ids, (id) => fromEpochDay(startOf(id) + n));
+      return;
+    }
+    if (marquee) {
+      const { cx0, cy0 } = marquee;
+      if (!marquee.active && Math.hypot(e.clientX - cx0, e.clientY - cy0) < DRAG_THRESHOLD) return;
+      autoScroll(e);
+      const p = pointerPoint(e);
+      marquee = { ...marquee, x: p.x, y: p.y, active: true };
+      const r = marqueeRect(marquee);
+      const hits = layout.bars
+        .filter((b) => b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + b.h > r.y)
+        .map((b) => b.id);
+      setSelection([...new Set([...marquee.base, ...hits])]);
       return;
     }
     if (connect) {
@@ -243,10 +279,17 @@
   function onPointerUp(e: PointerEvent): void {
     if (move) {
       const committed = previewDoc;
+      const { id, moved } = move;
       svgEl.releasePointerCapture?.(e.pointerId);
       move = null;
       previewDoc = null;
       if (committed) onEdit(committed);
+      else if (!moved && multi) select(id); // a plain click inside a group focuses just that bar
+      return;
+    }
+    if (marquee) {
+      svgEl.releasePointerCapture?.(e.pointerId);
+      marquee = null;
       return;
     }
     if (connect) {
@@ -285,37 +328,89 @@
   // Drop the selection when its task disappears (deleted here or edited away in the source).
   $: pruneSelection(doc);
   function pruneSelection(d: ParsedDocument): void {
-    if (selectedId && !d.tasks.has(selectedId)) clearFocus();
+    const kept = selection.filter((id) => d.tasks.has(id));
+    if (kept.length !== selection.length) setSelection(kept);
   }
 
   // Predecessors and successors of the selection stay legible; everything else fades.
-  $: related = relatedTo(renderDoc, selectedId);
-  function relatedTo(d: ParsedDocument, id: string | null): Set<string> {
+  $: related = relatedTo(renderDoc, selectedSet);
+  function relatedTo(d: ParsedDocument, ids: Set<string>): Set<string> {
     const out = new Set<string>();
-    if (!id) return out;
-    const t = d.tasks.get(id);
-    if (t?.position.kind === 'after') t.position.ids.forEach((p) => out.add(p));
-    for (const o of d.tasks.values()) {
-      if (o.position.kind === 'after' && o.position.ids.includes(id)) out.add(o.id);
+    for (const id of ids) {
+      const t = d.tasks.get(id);
+      if (t?.position.kind === 'after') t.position.ids.forEach((p) => out.add(p));
+      for (const o of d.tasks.values()) {
+        if (o.position.kind === 'after' && o.position.ids.includes(id)) out.add(o.id);
+      }
     }
     return out;
+  }
+
+  /** Bounding box of the selected bars: the group pill and move readout float above it. */
+  function boundsOf(l: typeof layout, ids: string[]): { x: number; y: number; w: number; h: number } | null {
+    const bars = ids.map((id) => l.barsById.get(id)).filter((b): b is Bar => !!b);
+    if (!bars.length) return null;
+    const x = Math.min(...bars.map((b) => b.x));
+    const y = Math.min(...bars.map((b) => b.y));
+    return {
+      x,
+      y,
+      w: Math.max(...bars.map((b) => b.x + b.w)) - x,
+      h: Math.max(...bars.map((b) => b.y + b.h)) - y,
+    };
+  }
+
+  function marqueeRect(m: NonNullable<typeof marquee>): { x: number; y: number; w: number; h: number } {
+    return {
+      x: Math.min(m.x0, m.x),
+      y: Math.min(m.y0, m.y),
+      w: Math.abs(m.x - m.x0),
+      h: Math.abs(m.y - m.y0),
+    };
+  }
+
+  /** While the rubber band is near an edge of the scroll area, scroll it along. */
+  const AUTOSCROLL = 24; // px edge zone, and the step per pointer move
+  function autoScroll(e: PointerEvent): void {
+    const r = scrollEl.getBoundingClientRect();
+    const dx =
+      e.clientX < r.left + colW + AUTOSCROLL ? -AUTOSCROLL : e.clientX > r.right - AUTOSCROLL ? AUTOSCROLL : 0;
+    const dy =
+      e.clientY < r.top + AUTOSCROLL ? -AUTOSCROLL : e.clientY > r.bottom - AUTOSCROLL ? AUTOSCROLL : 0;
+    if (dx || dy) scrollEl.scrollBy(dx, dy);
   }
 
   function sectionOf(id: string): string {
     return doc.sections.find((s) => s.taskIds.includes(id))?.name ?? '';
   }
 
-  function select(id: string): void {
-    selectedId = id;
+  function setSelection(ids: string[]): void {
+    selection = ids;
+    selectedId = ids.length === 1 ? ids[0] : null;
     mode = null;
     durPreview = null;
+  }
+
+  function select(id: string): void {
+    setSelection([id]);
     onBarLeave(); // the pill replaces the hover card
   }
 
+  /** ⇧/⌘-click: add a bar to the selection, or take it out. */
+  function toggle(id: string): void {
+    setSelection(selectedSet.has(id) ? selection.filter((x) => x !== id) : [...selection, id]);
+    onBarLeave();
+  }
+
+  /** ⇧↑ / ⇧↓: add the row above / below the last selected bar. */
+  function extendSelection(order: string[], dir: number): void {
+    const at = order.indexOf(selection[selection.length - 1]);
+    const next = order[Math.max(0, Math.min(order.length - 1, at + dir))];
+    if (next) setSelection([...selection.filter((x) => x !== next), next]);
+  }
+
   function clearFocus(): void {
-    selectedId = null;
-    mode = null;
-    durPreview = null;
+    setSelection([]);
   }
 
   function startOf(id: string): number {
@@ -336,28 +431,60 @@
 
   function onBarPointerDown(e: PointerEvent, id: string): void {
     if (e.button !== 0 || id === addPreview?.id) return;
-    if (id !== selectedId) {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      // No focus: focusing a just-deselected bar would pop its hover card. Blur so the keys
+      // (←/→, Esc) reach the timeline even when the code editor had focus.
+      e.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      toggle(id);
+      return;
+    }
+    if (!selectedSet.has(id)) {
       select(id); // first click only focuses — it never moves anything
       return;
     }
-    const bar = layout.barsById.get(id);
-    const task = doc.tasks.get(id);
-    if (!bar || !task) return;
+    const cuts = selection.flatMap((to) => {
+      const p = doc.tasks.get(to)?.position;
+      return p?.kind === 'after'
+        ? p.ids.filter((from) => !selectedSet.has(from)).map((from) => ({ from, to }))
+        : [];
+    });
     mode = null;
     move = {
       id,
+      ids: [...selection],
       x0: e.clientX,
       grab: pointerDay(e) - startOf(id),
       origStart: startOf(id),
-      origAfter: task.position.kind === 'after' ? [...task.position.ids] : [],
-      origin: { x: bar.x, y: bar.y, w: bar.w, h: bar.h },
+      cuts,
+      origins: selection.flatMap((sid) => {
+        const b = layout.barsById.get(sid);
+        return b ? [{ x: b.x, y: b.y, w: b.w, h: b.h }] : [];
+      }),
       moved: false,
     };
     svgEl.setPointerCapture(e.pointerId);
   }
 
+  /** Empty space: a click clears the selection, a drag rubber-bands a new one (⇧ adds to it). */
   function onBackgroundPointerDown(e: PointerEvent): void {
-    if (!(e.target as Element).closest('.bar')) clearFocus();
+    const target = e.target as Element;
+    if (target.closest('.bar')) return;
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    if (!additive) clearFocus();
+    if (e.button !== 0 || !svgEl.contains(target) || target.closest('.proposed')) return;
+    const p = pointerPoint(e);
+    marquee = {
+      x0: p.x,
+      y0: p.y,
+      x: p.x,
+      y: p.y,
+      cx0: e.clientX,
+      cy0: e.clientY,
+      base: additive ? selection : [],
+      active: false,
+    };
+    svgEl.setPointerCapture(e.pointerId);
   }
 
   function unlink(): void {
@@ -365,8 +492,8 @@
   }
 
   function nudge(days: number): void {
-    if (!selectedId) return;
-    onEdit(moveTask(doc, selectedId, fromEpochDay(shiftDay(startOf(selectedId), days))));
+    if (!selection.length) return;
+    onEdit(moveTasks(doc, selection, (id) => fromEpochDay(shiftDay(startOf(id), days))));
   }
 
   function setLength(days: number): void {
@@ -440,10 +567,15 @@
     else clearFocus();
   }
 
+  function trackAddKey(e: KeyboardEvent): void {
+    addKey = e.shiftKey || e.metaKey || e.ctrlKey;
+  }
+
   function onKeydown(e: KeyboardEvent): void {
+    trackAddKey(e);
     const el = e.target as HTMLElement;
     if (el.closest('input, textarea, select, [contenteditable="true"]')) return;
-    if (e.metaKey || e.ctrlKey || e.altKey || drag || connect || move) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || drag || connect || move || marquee) return;
     // A keyboard-focused bar (Tab) is selected with Enter.
     const barId = el.closest?.('.bar')?.getAttribute('data-id');
     if (mode) return;
@@ -452,7 +584,7 @@
       openNew(undefined, e.shiftKey);
       return;
     }
-    if (!selectedId) {
+    if (!selection.length) {
       if (barId && e.key === 'Enter') {
         e.preventDefault();
         select(barId);
@@ -462,21 +594,24 @@
     if (e.key === 'Enter' && el.tagName === 'BUTTON') return; // let the button activate
     const k = e.key;
     const order = layout.bars.map((b) => b.id);
-    const at = order.indexOf(selectedId);
+    const at = selectedId ? order.indexOf(selectedId) : -1;
     const resizable = selectedTask?.kind !== 'milestone';
-    if (/^[0-9]$/.test(k) && resizable) pill?.startDurationEdit(k);
+    if (k === 'ArrowLeft') nudge(e.shiftKey ? (doc.excludeWeekends ? -5 : -7) : -1);
+    else if (k === 'ArrowRight') nudge(e.shiftKey ? (doc.excludeWeekends ? 5 : 7) : 1);
+    else if ((k === 'ArrowDown' || k === 'ArrowUp') && e.shiftKey)
+      extendSelection(order, k === 'ArrowDown' ? 1 : -1);
+    else if (k === 'Escape') clearFocus();
+    else if (!selectedId) return; // a group only moves
+    else if (/^[0-9]$/.test(k) && resizable) pill?.startDurationEdit(k);
     else if ((k === '+' || k === '=') && resizable && selectedTask)
       setLength(selectedTask.duration + 1);
     else if (k === '-' && resizable && selectedTask)
       setLength(Math.max(0.5, selectedTask.duration - 1));
-    else if (k === 'ArrowLeft') nudge(e.shiftKey ? (doc.excludeWeekends ? -5 : -7) : -1);
-    else if (k === 'ArrowRight') nudge(e.shiftKey ? (doc.excludeWeekends ? 5 : 7) : 1);
     else if (k === 'ArrowDown') select(order[Math.min(order.length - 1, at + 1)]);
     else if (k === 'ArrowUp') select(order[Math.max(0, at - 1)]);
     else if (k === 'a' || k === 'A') openAdd();
     else if (k === 'Enter') mode = 'edit';
     else if (k === 'Delete' || k === 'Backspace') removeSelected();
-    else if (k === 'Escape') clearFocus();
     else return;
     e.preventDefault();
   }
@@ -485,9 +620,9 @@
   // with a scissors badge on it.
   $: cutLinks =
     move?.moved && previewDoc
-      ? move.origAfter.flatMap((from) => {
+      ? move.cuts.flatMap(({ from, to }) => {
           const a = layout.barsById.get(from);
-          const b = move && layout.barsById.get(move.id);
+          const b = layout.barsById.get(to);
           if (!a || !b) return [];
           const s = sourceAnchor(a, b.cy < a.cy ? 'top' : 'bottom');
           const t = frontAnchor(b);
@@ -502,21 +637,26 @@
         })
       : [];
 
-  $: moveReadout = move?.moved && selectedId ? readout(renderSchedule, selectedId) : '';
-  function readout(sched: ScheduleResult, id: string): string {
-    const s = sched.tasks.get(id);
-    if (!s || !move) return '';
-    const delta = Math.floor(s.startDay) - move.origStart;
-    const span = `${formatDayLabel(s.startDay)} → ${formatDayLabel(s.endDay - 1e-9)}`;
-    return `${span} · ${delta >= 0 ? '+' : ''}${delta}d`;
+  $: cutFrom = move ? [...new Set(move.cuts.map((c) => c.from))] : [];
+  $: moveReadout = move?.moved ? readout(renderSchedule, move) : '';
+  function readout(sched: ScheduleResult, m: NonNullable<typeof move>): string {
+    const s = sched.tasks.get(m.id);
+    if (!s) return '';
+    const delta = Math.floor(s.startDay) - m.origStart;
+    const what =
+      m.ids.length > 1
+        ? `${m.ids.length} tasks`
+        : `${formatDayLabel(s.startDay)} → ${formatDayLabel(s.endDay - 1e-9)}`;
+    return `${what} · ${delta >= 0 ? '+' : ''}${delta}d`;
   }
 </script>
 
-<svelte:window on:keydown={onKeydown} />
+<svelte:window on:keydown={onKeydown} on:keyup={trackAddKey} on:blur={() => (addKey = false)} />
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
   class="timeline-scroll"
+  bind:this={scrollEl}
   style:scroll-padding-left="{colW}px"
   on:pointerdown={onBackgroundPointerDown}
 >
@@ -524,7 +664,7 @@
   <!-- section-name column: sticky on horizontal scroll, scrolls vertically with the chart -->
   <svg
     class="names"
-    class:focusing={selectedId !== null}
+    class:focusing={selection.length > 0}
     width={colW}
     height={layout.height}
     viewBox={`0 0 ${colW} ${layout.height}`}
@@ -580,8 +720,9 @@
     class="timeline"
     class:dragging={drag !== null}
     class:connecting={connect !== null}
-    class:focusing={selectedId !== null}
+    class:focusing={selection.length > 0}
     class:moving={move?.moved}
+    class:adding={addKey}
     bind:this={svgEl}
     width={layout.width}
     height={layout.height}
@@ -647,7 +788,7 @@
         {@const isGhost = bar.id === addPreview?.id}
         <g
           class="bar"
-          class:selected={bar.id === selectedId}
+          class:selected={selectedSet.has(bar.id)}
           class:related={related.has(bar.id)}
           class:ghost={isGhost}
           data-id={bar.id}
@@ -657,22 +798,31 @@
           on:pointerdown={(e) => onBarPointerDown(e, bar.id)}
           on:dblclick={() => bar.id === selectedId && (mode = 'edit')}
           on:mouseenter={(e) =>
-            task && !drag && !move && bar.id !== selectedId && !isGhost && onBarEnter(task, e.currentTarget)}
+            task &&
+            !drag &&
+            !move &&
+            !marquee &&
+            !selectedSet.has(bar.id) &&
+            !isGhost &&
+            onBarEnter(task, e.currentTarget)}
           on:mouseleave={onBarLeave}
-          on:focus={(e) => task && bar.id !== selectedId && !isGhost && onBarEnter(task, e.currentTarget)}
+          on:focus={(e) => task && !selectedSet.has(bar.id) && !isGhost && onBarEnter(task, e.currentTarget)}
           on:blur={onBarLeave}
         >
-          {#if bar.id === selectedId}
+          {#if selectedSet.has(bar.id)}
             {@const r = bar.isMilestone ? bar.h / 2 : 0}
-            <rect
-              bind:this={ringEl}
-              x={(bar.isMilestone ? bar.cx - r : bar.x) - 3.5}
-              y={bar.y - 3.5}
-              width={(bar.isMilestone ? 2 * r : bar.w) + 7}
-              height={bar.h + 7}
-              rx="6"
-              class="focus-ring"
-            />
+            {@const ring = {
+              x: (bar.isMilestone ? bar.cx - r : bar.x) - 3.5,
+              y: bar.y - 3.5,
+              width: (bar.isMilestone ? 2 * r : bar.w) + 7,
+              height: bar.h + 7,
+            }}
+            <!-- only the single focused bar's ring anchors the pill -->
+            {#if bar.id === selectedId}
+              <rect bind:this={ringEl} {...ring} rx="6" class="focus-ring" />
+            {:else}
+              <rect {...ring} rx="6" class="focus-ring" />
+            {/if}
           {/if}
           {#if bar.isMilestone}
             <path
@@ -763,7 +913,7 @@
     <!-- dependency arrows on top -->
     <g class="arrows">
       {#each layout.arrows as arrow}
-        {@const hot = selectedId !== null && (arrow.from === selectedId || arrow.to === selectedId)}
+        {@const hot = selectedSet.has(arrow.from) || selectedSet.has(arrow.to)}
         <path
           d={arrow.d}
           class="arrow"
@@ -787,16 +937,29 @@
       {/each}
     </g>
 
-    <!-- focus mode: where a moved bar came from, and the links the move will cut -->
-    {#if move?.moved && previewDoc}
+    <!-- multi-select: box around the selected bars, anchoring the group pill / readout -->
+    {#if groupBox}
       <rect
-        x={move.origin.x}
-        y={move.origin.y}
-        width={move.origin.w}
-        height={move.origin.h}
-        rx="3"
-        class="move-origin"
+        bind:this={groupBoxEl}
+        x={groupBox.x}
+        y={groupBox.y}
+        width={groupBox.w}
+        height={groupBox.h}
+        class="group-box"
       />
+    {/if}
+
+    <!-- rubber band selecting bars -->
+    {#if marquee?.active}
+      {@const r = marqueeRect(marquee)}
+      <rect x={r.x} y={r.y} width={r.w} height={r.h} rx="3" class="marquee" />
+    {/if}
+
+    <!-- focus mode: where the moved bars came from, and the links the move will cut -->
+    {#if move?.moved && previewDoc}
+      {#each move.origins as o}
+        <rect x={o.x} y={o.y} width={o.w} height={o.h} rx="3" class="move-origin" />
+      {/each}
       {#each cutLinks as cut}
         <path d={cut.d} class="cut-link" marker-end="url(#arrowhead-cut)" />
         <g class="cut-badge" transform={`translate(${cut.cx - 9},${cut.cy - 9})`}>
@@ -821,7 +984,10 @@
   </div>
 </div>
 
-{#if selectedTask && !move?.moved && !mode}
+{#if multi && !move?.moved && !marquee}
+  <GroupPill count={selection.length} anchor={groupBoxEl} onNudge={nudge} onClear={clearFocus} />
+{/if}
+{#if selectedTask && !move?.moved && !mode && !marquee}
   <FocusPill
     bind:this={pill}
     task={selectedTask}
@@ -837,9 +1003,9 @@
   />
 {/if}
 {#if moveReadout}
-  <div class="move-readout" use:floating={{ anchor: ringEl, placement: 'top' }}>
-    {moveReadout}{#if move?.origAfter.length && previewDoc}&nbsp;·
-      <span class="warn">unlinks {move.origAfter.join(', ')}</span>{/if}
+  <div class="move-readout" use:floating={{ anchor: multi ? groupBoxEl : ringEl, placement: 'top' }}>
+    {moveReadout}{#if cutFrom.length && previewDoc}&nbsp;·
+      <span class="warn">unlinks {cutFrom.join(', ')}</span>{/if}
   </div>
 {/if}
 {#if addPreview && ((selectedTask && mode === 'add') || mode === 'new')}
@@ -886,6 +1052,7 @@
   .canvas {
     display: flex;
     align-items: flex-start;
+    user-select: none; /* ⇧-click and the rubber band must not select label text */
   }
   .names {
     position: sticky;
@@ -1100,6 +1267,22 @@
   .timeline.moving,
   .timeline.moving .bar-rect {
     cursor: grabbing;
+  }
+  /* ⇧/⌘ held: a click adds the bar to (or removes it from) the selection */
+  .timeline.adding .bar-rect,
+  .timeline.adding .milestone {
+    cursor: copy;
+  }
+  .group-box {
+    fill: none;
+    pointer-events: none;
+  }
+  .marquee {
+    fill: var(--accent-soft);
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    pointer-events: none;
   }
   .bar.selected:focus {
     outline: none;

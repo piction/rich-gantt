@@ -81,8 +81,8 @@
     return { sections, bars, sch, width: X0 + DAYS * PX, height: y + 8, xOfDay: (d) => X0 + d * PX, dayOfX: (x) => (x - X0) / PX };
   }
 
-  /* opts: tasks, selected, origin {x,w,y,h} (dashed pre-move outline), broken [{from,to}],
-     dim (default: true when something is selected). */
+  /* opts: tasks, selected, multi [ids] (multi-selection), origin {x,w,y,h} / origins [...]
+     (dashed pre-move outlines), broken [{from,to}], dim (default: true when something is selected). */
   function render(host, o) {
     const tasks = o.tasks;
     const L = layout(tasks);
@@ -93,7 +93,9 @@
       by.get(sel).after.forEach((p) => related.add(p));
       tasks.forEach((t) => t.after.includes(sel) && related.add(t.id));
     }
-    const dim = o.dim ?? !!sel;
+    const multi = new Set(o.multi || []);
+    const isSel = (id) => id === sel || multi.has(id);
+    const dim = o.dim ?? (!!sel || multi.size > 0);
     let s = `<svg class="timeline${dim ? ' focusing' : ''}" width="${L.width}" height="${L.height}" viewBox="0 0 ${L.width} ${L.height}">
       <defs>
         <marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" class="arrowhead"/></marker>
@@ -114,21 +116,22 @@
     L.sections.forEach((sec) => (s += `<text x="10" y="${sec.y + 16}" class="section-label">${esc(sec.name)}</text>`));
 
     // origin outline (where the bar was before the move)
-    if (o.origin) s += `<rect x="${o.origin.x}" y="${o.origin.y}" width="${o.origin.w}" height="${o.origin.h}" rx="3" class="origin"/>`;
+    for (const g of o.origins || (o.origin ? [o.origin] : []))
+      s += `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3" class="origin"/>`;
 
     // bars
     for (const t of tasks) {
       const b = L.bars.get(t.id);
       const cls = ['bar'];
       if (t.ghost) cls.push('ghost');
-      if (t.id === sel) cls.push('selected');
+      if (isSel(t.id)) cls.push('selected');
       else if (dim && !related.has(t.id)) cls.push('dim');
       else if (dim) cls.push('related');
       const k = FILL[t.type];
       const fill = k === undefined ? 'var(--bar-none)' : `var(--bar-${k})`;
       const fg = k === undefined ? 'var(--bar-none-fg)' : `var(--bar-${k}-fg)`;
       s += `<g class="${cls.join(' ')}" data-id="${t.id}">`;
-      if (t.id === sel) s += `<rect x="${b.x - 3.5}" y="${b.y - 3.5}" width="${b.w + 7}" height="${b.h + 7}" rx="6" class="focus-ring"/>`;
+      if (isSel(t.id)) s += `<rect x="${b.x - 3.5}" y="${b.y - 3.5}" width="${b.w + 7}" height="${b.h + 7}" rx="6" class="focus-ring"/>`;
       s += `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="3" class="bar-rect" style="${t.ghost ? '' : `fill:${fill}`}"/>`;
       const label = fit(t.label, b.w - 12);
       s += `<text x="${b.x + 6}" y="${b.cy + 4}" class="bar-label" style="${t.ghost ? '' : `fill:${fg}`}">${esc(label)}</text>`;
@@ -146,7 +149,7 @@
     for (const t of tasks)
       for (const p of t.after) {
         if (!L.bars.has(p)) continue;
-        const hot = sel && (t.id === sel || p === sel);
+        const hot = multi.size ? isSel(t.id) && isSel(p) : sel && (t.id === sel || p === sel);
         s += arrow(p, t.id, t.ghost ? 'ghost' : hot ? 'focus' : dim ? 'dim' : '', hot ? 'ah-f' : 'ah');
       }
     for (const br of o.broken || []) {

@@ -99,6 +99,34 @@ export function moveTask(doc: ParsedDocument, id: TaskId, date: string): ParsedD
 }
 
 /**
+ * Group move: shift the tasks in `ids` together. Links between members are kept, so a member
+ * `after` another member just follows it. Links from outside the group are cut: a member that
+ * keeps no predecessor is pinned to `dateOf(id)` (its shifted start).
+ */
+export function moveTasks(
+  doc: ParsedDocument,
+  ids: Iterable<TaskId>,
+  dateOf: (id: TaskId) => string,
+): ParsedDocument {
+  const group = new Set(ids);
+  const tasks = new Map(doc.tasks);
+  for (const id of group) {
+    const t = tasks.get(id);
+    if (!t) continue;
+    const preds = t.position.kind === 'after' ? t.position.ids : [];
+    const inner = preds.filter((p) => group.has(p));
+    if (inner.length && inner.length === preds.length) continue;
+    tasks.set(id, {
+      ...t,
+      position: inner.length
+        ? { kind: 'after', ids: inner }
+        : { kind: 'absolute', date: dateOf(id) },
+    });
+  }
+  return { ...doc, tasks };
+}
+
+/**
  * Delete a task (its metadata goes with it). Every direct successor is pinned to its current
  * start date (`startOf`), exactly as if it had been unlinked, so nothing else moves.
  */

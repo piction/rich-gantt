@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Focus mode — move several tasks together</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  .opt { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .04em; }
+  .marquee { position: absolute; border: 1.5px dashed var(--accent); background: var(--accent-soft); border-radius: 3px; pointer-events: none; }
+  .gpill .count { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px; font-weight: 600; }
+  .gpill .badge { background: var(--accent); color: #fff; border-radius: 999px; font: 700 11px/18px system-ui; min-width: 18px; text-align: center; padding: 0 5px; }
+  :root[data-theme='dark'] .gpill .badge { color: #06182e; }
+  .gpill .hint { padding: 0 8px; }
+  .cursor-plus { font: 700 11px system-ui; background: var(--fg); color: var(--bg); border-radius: 4px; padding: 0 4px; }
+  .sec-grip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 2px 6px 2px 3px; font: 600 12px system-ui; box-shadow: var(--shadow); }
+  .cutline { position: absolute; width: 0; border-left: 2px solid var(--accent); }
+  .cutline .handle { position: absolute; top: -26px; left: -1px; transform: translateX(-50%); background: var(--accent); color: #fff; border-radius: 6px; padding: 2px 7px; font: 600 11px system-ui; white-space: nowrap; }
+  :root[data-theme='dark'] .cutline .handle { color: #06182e; }
+  .shade { position: absolute; background: var(--accent-soft); pointer-events: none; }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 900px; font-size: 13.5px; background: var(--panel-bg); }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>Move several tasks together</h1>
+<p class="lead">
+  Extends focus mode: today one focused bar can be dragged / nudged with <kbd>←</kbd><kbd>→</kbd>.
+  Goal: select <b>several</b> bars and move them as one block. Only moving — no group edit/delete.
+  Four ways to build the selection; all share the same <a href="#semantics">move semantics</a>.
+</p>
+<p class="lead"><b>Worth knowing:</b> successors that are <code>after</code> a moved task already follow it.
+  Multi-select is for the tasks that <i>don't</i> follow on their own: pinned tasks, tasks in
+  other branches, or a task together with its predecessors.</p>
+
+<div id="frames"></div>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const base = () => G.sample();
+
+  /* Shift `ids` by `delta` days as a block. Links between members are kept; links from outside
+     into the block are cut and those members pin to (old start + delta). Returns the broken links. */
+  function groupMove(tasks, ids, delta) {
+    const sch = G.schedule(tasks);
+    const inG = new Set(ids);
+    const broken = [];
+    for (const t of tasks) {
+      if (!inG.has(t.id)) continue;
+      const ext = t.after.filter((p) => !inG.has(p));
+      ext.forEach((p) => broken.push({ from: p, to: t.id }));
+      const int = t.after.filter((p) => inG.has(p));
+      if (ext.length || !t.after.length) {
+        if (!int.length) t.start = sch.get(t.id).start + delta;
+        t.after = int;
+      }
+    }
+    return broken;
+  }
+  const origins = (L, ids) => ids.map((id) => { const b = L.bars.get(id); return { x: b.x, y: b.y, w: b.w, h: b.h }; });
+  const blockTop = (L, ids) => {
+    const bs = ids.map((id) => L.bars.get(id));
+    const x1 = Math.min(...bs.map((b) => b.x)), x2 = Math.max(...bs.map((b) => b.x + b.w));
+    return { cx: (x1 + x2) / 2, y: Math.min(...bs.map((b) => b.y)) };
+  };
+  const box = (h, x, y, w, hh) => G.place(h, `<div class="marquee" style="position:static;width:${w}px;height:${hh}px"></div>`, x, y, { ax: 0, ay: 0 });
+  const cursor = (h, x, y, extra = '') =>
+    G.place(h, `<div style="display:flex;gap:2px;align-items:flex-start"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 2 L4 19 L8.5 15 L11.5 22 L14 21 L11 14 L17 14 Z" fill="#111" stroke="#fff" stroke-width="1.5"/></svg>${extra}</div>`, x, y, { ax: 0, ay: 0 });
+
+  function groupPill(n, extra = '') {
+    return `<div class="pill gpill">
+      <span class="count"><span class="badge">${n}</span>tasks selected</span>
+      <span class="sep"></span>
+      <button class="pbtn icon" title="Move −1 day (←)">${G.icon('minus', 13)}</button>
+      <span class="muted">move</span>
+      <button class="pbtn icon" title="Move +1 day (→)">${G.icon('plus', 13)}</button>
+      ${extra}
+      <span class="sep"></span>
+      <span class="hint">drag any selected bar · <kbd>Esc</kbd></span>
+      <button class="pbtn icon" title="Clear selection (Esc)">${G.icon('x', 13)}</button>
+    </div>`;
+  }
+  const readout = (what, delta, cuts) =>
+    `<div class="readout">${what} · <b>${delta >= 0 ? '+' : ''}${delta}d</b>${cuts.length ? ` · <span class="warn">unlinks ${cuts.join(', ')}</span>` : ''}</div>`;
+
+  const header = (opt, title, text) => {
+    const d = document.createElement('h2');
+    d.innerHTML = `<span class="opt">${opt}</span><br>${title}`;
+    document.querySelector('#frames').append(d);
+    const p = document.createElement('p');
+    p.className = 'lead';
+    p.innerHTML = text;
+    document.querySelector('#frames').append(p);
+  };
+
+  /* ================= Option 1 — modifier-click ================= */
+  header('OPTION 1', '⇧/⌘-click to add to the selection',
+    'The standard desktop pattern (Finder, Figma, file lists). Click focuses one bar as today; <kbd>⇧</kbd>-click or <kbd>⌘</kbd>/<kbd>Ctrl</kbd>-click toggles more bars in. Drag any selected bar → all move.');
+  {
+    const SEL = ['dev2', 'dev4', 'dev6'];
+    const h = G.frame('#frames', {
+      step: '1a', title: 'Build the selection',
+      text: 'Focus <code>dev2</code>, then <kbd>⇧</kbd>-click <code>dev4</code> and <code>dev6</code>. With ≥ 2 bars the single-task pill is swapped for a compact group pill.',
+      notes: [
+        '<b>⇧-click on a selected bar removes it</b> (toggle). Plain click on any bar = back to single focus.',
+        'Hover shows a small <span class="cursor-plus">+</span> next to the cursor while <kbd>⇧</kbd> is held → discoverable without docs.',
+        'Group pill: count, <kbd>←</kbd><kbd>→</kbd> nudge buttons, clear. No length/edit/delete — those stay single-task.',
+        'Keyboard: <kbd>⇧↑</kbd>/<kbd>⇧↓</kbd> extends the selection to the previous/next row.',
+      ],
+    });
+    const L = G.render(h, { tasks: base(), multi: SEL });
+    const t = blockTop(L, SEL);
+    G.place(h, groupPill(3), t.cx, t.y - 10);
+    const b = L.bars.get('dev6');
+    cursor(h, b.cx, b.cy, '<span class="cursor-plus">+</span>');
+  }
+  {
+    const SEL = ['dev2', 'dev4', 'dev6'];
+    const h = G.frame('#frames', {
+      step: '1b', title: 'Drag any selected bar → the whole block moves',
+      text: 'Same gesture as single move (4 px threshold, day snapping). Every member previews live with its dashed origin; each cut link shows the red dashed edge + scissors.',
+      notes: [
+        'The readout sums it up: one delta for the block, and the list of links that will be cut.',
+        'Drop back on the start day → cancels, as today.',
+      ],
+    });
+    const t0 = base();
+    const L0 = G.layout(t0);
+    const t = base();
+    const br = groupMove(t, SEL, 3);
+    const L = G.render(h, { tasks: t, multi: SEL, origins: origins(L0, SEL), broken: br });
+    const b = L.bars.get('dev4');
+    G.place(h, readout('3 tasks', 3, br.map((x) => x.from)), blockTop(L, SEL).cx, blockTop(L, SEL).y - 10);
+    cursor(h, b.cx, b.cy);
+  }
+
+  /* ================= Option 2 — marquee ================= */
+  header('OPTION 2', 'Rubber-band (marquee) on empty space',
+    'Press on empty timeline space and drag: a rectangle selects every bar it touches. A plain click on empty space still clears focus. Best for "this whole block of the plan".');
+  {
+    const SEL = ['dev3', 'dev4', 'arch3', 'dev5', 'dev6'];
+    const h = G.frame('#frames', {
+      step: '2a', title: 'Drag a rectangle over the bars',
+      text: 'Bars light up as soon as the rectangle touches them (not only when fully inside — bars are thin, full containment is fiddly).',
+      notes: [
+        '<kbd>⇧</kbd>+marquee adds to the current selection; combine freely with option 1.',
+        'Near the edge the timeline auto-scrolls so big blocks can be caught.',
+        'Conflict to solve: dragging empty space today does nothing (clicks clear focus) → no existing gesture is lost.',
+      ],
+    });
+    const L = G.render(h, { tasks: base(), multi: SEL, dim: true });
+    const a = L.bars.get('dev3'), z = L.bars.get('dev6');
+    box(h, a.x - 14, a.y - 8, (z.x + z.w + 40) - (a.x - 14), (z.y + z.h + 10) - (a.y - 8));
+    cursor(h, z.x + z.w + 26, z.y + z.h + 2);
+  }
+  {
+    const SEL = ['dev3', 'dev4', 'arch3', 'dev5', 'dev6'];
+    const h = G.frame('#frames', {
+      step: '2b', title: 'Drag one of them → block moves, internal links survive',
+      text: '<code>arch3 → dev5/dev6</code> and <code>dev3 → arch3</code> are inside the block and are kept. Only the edges entering the block (<code>arch2 → dev3</code>, <code>arch2 → dev4</code>) are cut.',
+      notes: [
+        'Only <b>roots</b> of the block (members with a predecessor outside it) get pinned to a date. The rest keep their <code>after</code> and simply follow → the source diff stays minimal.',
+      ],
+    });
+    const L0 = G.layout(base());
+    const t = base();
+    const br = groupMove(t, SEL, 4);
+    const L = G.render(h, { tasks: t, multi: SEL, origins: origins(L0, SEL), broken: br });
+    G.place(h, readout('5 tasks', 4, [...new Set(br.map((x) => x.from))]), blockTop(L, SEL).cx, blockTop(L, SEL).y - 10);
+    const b = L.bars.get('dev3');
+    cursor(h, b.cx, b.cy);
+  }
+
+  /* ================= Option 3 — section handle ================= */
+  header('OPTION 3', 'Grab a section by its name',
+    'Click a section name → all its tasks are selected. Drag the name horizontally → the whole section moves. Matches how plans are usually shifted: per phase.');
+  {
+    const SEL = ['arch3', 'dev5', 'dev6'];
+    const h = G.frame('#frames', {
+      step: '3a', title: 'Hover / drag the section label',
+      text: 'On hover the label gets a grip and the section\'s bars get a soft outline. Drag it left/right; all tasks of the section move.',
+      notes: [
+        'Click (no drag) = select the section\'s tasks → refine with <kbd>⇧</kbd>-click, then drag a bar as in option 1.',
+        'Zero new hit-zones on the timeline; the name column is idle space today (only a hover card).',
+        'Limitation: selection is always a whole section. Cross-section blocks need option 1 or 2.',
+      ],
+    });
+    const L0 = G.layout(base());
+    const t = base();
+    const br = groupMove(t, SEL, 2);
+    const L = G.render(h, { tasks: t, multi: SEL, origins: origins(L0, SEL), broken: br });
+    const sec = L.sections.find((s) => s.name === 'Integration');
+    G.place(h, `<span class="sec-grip">${G.icon('grip', 14)} Integration</span>`, 6, sec.y + 4, { ax: 0, ay: 0 });
+    cursor(h, 60, sec.y + 12);
+    G.place(h, readout('Integration', 2, br.map((x) => x.from)), blockTop(L, SEL).cx, blockTop(L, SEL).y - 10);
+  }
+
+  /* ================= Option 4 — push from date ================= */
+  header('OPTION 4', 'Push everything after a date',
+    'Not a selection at all: grab a vertical line on the time axis; everything starting on/after that day moves together. The "we slipped a week, push the rest" case — one gesture, no clicking bars.');
+  {
+    const L0 = G.layout(base());
+    const DAY = 11;
+    const ids = base().filter((x) => L0.bars.get(x.id).start >= DAY).map((x) => x.id);
+    const h = G.frame('#frames', {
+      step: '4a', title: 'Drag the header → a cut line appears',
+      text: 'Press on the date header (or <kbd>Alt</kbd>-drag on empty space). Everything right of the line is selected (shaded) and follows the drag.',
+      notes: [
+        'Tasks <i>spanning</i> the line stay put (they started before it). Links crossing the line get cut, shown the same way as in single move.',
+        'Dragging left (pulling the plan in) is blocked at the end of the latest task before the line, so nothing overlaps its predecessor.',
+        'Very fast for big plans; but no fine control — it\'s a different tool than "these 3 tasks".',
+      ],
+    });
+    const t = base();
+    const br = groupMove(t, ids, 5);
+    const L = G.render(h, { tasks: t, multi: ids, origins: origins(L0, ids), broken: br });
+    const x = L.xOfDay(DAY + 5);
+    G.place(h, `<div class="shade" style="position:static;width:${L.width - x}px;height:${L.height - 30}px"></div>`, x, 30, { ax: 0, ay: 0 });
+    G.place(h, `<div class="cutline" style="position:relative;height:${L.height - 30}px"><span class="handle">${G.fmtDay(DAY + 5)} · +5d</span></div>`, x, 30, { ax: 0, ay: 0 });
+    G.place(h, `<div class="cutline" style="position:relative;height:${L.height - 30}px;border-left-style:dashed;opacity:.5"></div>`, L.xOfDay(DAY), 30, { ax: 0, ay: 0 });
+  }
+</script>
+
+<h2 id="semantics">Shared move semantics (all options)</h2>
+<ul class="principles" style="font-size:13.5px;max-width:900px">
+  <li><b>One delta for the block.</b> Every member shifts by the same number of days (working days when weekends are excluded).</li>
+  <li><b>Internal links are kept</b> — a member <code>after</code> another member is not touched in the source.</li>
+  <li><b>Incoming links are cut</b> — members with a predecessor outside the block are pinned (<code>moveTask</code>) to old start + delta. Previewed red/scissors, same as today.</li>
+  <li><b>Outgoing successors cascade</b> via the scheduler, as today.</li>
+  <li><b>One commit</b> → one <code>commitDocument</code>, so the code editor sees a single change.</li>
+</ul>
+
+<h2>Comparison</h2>
+<table class="cmp">
+  <tr><th></th><th>1 · ⇧-click</th><th>2 · Marquee</th><th>3 · Section</th><th>4 · Push from date</th></tr>
+  <tr><td>Arbitrary picks (across sections)</td><td class="good">Yes</td><td class="meh">Rectangular only</td><td class="bad">Whole section</td><td class="bad">Everything after X</td></tr>
+  <tr><td>Big blocks</td><td class="bad">Tedious</td><td class="good">One gesture</td><td class="good">One gesture</td><td class="good">One gesture</td></tr>
+  <tr><td>Discoverability</td><td class="good">Known convention</td><td class="good">Known convention</td><td class="meh">Needs hover grip</td><td class="meh">Hidden in header</td></tr>
+  <tr><td>Keyboard</td><td class="good">⇧↑/⇧↓ + ←/→</td><td class="bad">Mouse only</td><td class="meh">Tab to label</td><td class="bad">Mouse only</td></tr>
+  <tr><td>Conflicts with existing gestures</td><td class="good">None</td><td class="good">None (empty-space drag unused)</td><td class="good">None</td><td class="meh">Header / Alt</td></tr>
+  <tr><td>Implementation</td><td class="good">Small: <code>selectedId</code> → set</td><td class="meh">+ rect hit-test, autoscroll</td><td class="good">Small, reuses 1</td><td class="meh">Own gesture + clamp</td></tr>
+</table>
+
+<div class="reco" style="margin-top:24px">
+  <h3>Recommendation: 1 + 2</h3>
+  Build the selection set + group move once (option 1, small change), then add the marquee on top
+  (option 2) — together they cover "a few picks" and "this block", both are known conventions, and
+  neither steals an existing gesture. Option 3 is a cheap later add-on reusing the same engine;
+  option 4 is a separate tool, only worth it if "push the rest of the plan" is a frequent need.
+</div>
+
+<h2>Open decisions for you</h2>
+<ol class="principles" style="font-size:13.5px;max-width:900px">
+  <li><b>Fan-in member</b> (<code>after</code> one member and one outsider): keep only the internal link (shown) or pin it to a date like the other roots?</li>
+  <li><b>Plain click on an already-selected bar</b> in a multi-selection: collapse to single focus (shown) or keep the group so a slightly-off drag doesn't lose it?</li>
+  <li><b>Modifier:</b> <kbd>⇧</kbd> only, <kbd>⌘</kbd>/<kbd>Ctrl</kbd> only, or both (proposed)?</li>
+</ol>
+</body>
+</html>
