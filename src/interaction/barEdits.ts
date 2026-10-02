@@ -172,6 +172,33 @@ export function addTaskAfter(
   return { doc: { ...doc, tasks, sections, order: insertAfter(doc.order) }, id };
 }
 
+/**
+ * Add a task pinned to `start` (YYYY-MM-DD), appended at the end of its section. Returns the
+ * new document and the generated id.
+ */
+export function addTaskAt(
+  doc: ParsedDocument,
+  start: string,
+  draft: NewTaskDraft,
+): { doc: ParsedDocument; id: TaskId } {
+  const id = newTaskId(doc, draft.section);
+  const tasks = new Map(doc.tasks);
+  tasks.set(id, {
+    id,
+    label: cleanLabel(draft.label) || 'New task',
+    section: draft.section,
+    position: { kind: 'absolute', date: start },
+    duration: snapDuration(draft.duration),
+    kind: 'task',
+    sourceLine: 0,
+    metadata: null,
+  });
+  const sections = doc.sections.map((s) =>
+    s.name === draft.section ? { ...s, taskIds: [...s.taskIds, id] } : s,
+  );
+  return { doc: { ...doc, tasks, sections, order: [...doc.order, id] }, id };
+}
+
 /** A metadata body split into its leading `- key: value` run and the free markdown after it. */
 export interface MetadataParts {
   attrs: [string, string][];

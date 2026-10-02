@@ -1,11 +1,14 @@
 <script lang="ts">
   // "+ After" bootstrap: asks only for a name; length and section default to the focused
   // task's. The timeline previews the draft as a ghost bar (this popover is anchored to it).
+  // Without `afterLabel` it is the toolbar's "+ Task": a free task pinned to a bound `start`.
   import type { NewTaskDraft } from '../interaction/barEdits';
+  import { isValidDateString } from '../compute/dateMath';
   import Icon from './Icon.svelte';
   import { floating } from './floating';
 
-  export let afterLabel: string;
+  export let afterLabel: string | null = null;
+  export let start = ''; // bound, YYYY-MM-DD; only used without afterLabel
   export let draft: NewTaskDraft; // bound: edits drive the ghost-bar preview
   export let sections: string[];
   export let anchor: Element | null;
@@ -17,6 +20,12 @@
 
   function focusInput(el: HTMLInputElement): void {
     el.focus();
+  }
+
+  // A half-typed or cleared date is not propagated, so the ghost-bar preview never breaks.
+  function onDate(e: Event): void {
+    const v = (e.currentTarget as HTMLInputElement).value;
+    if (isValidDateString(v)) start = v;
   }
 
   function onKey(e: KeyboardEvent): void {
@@ -38,9 +47,19 @@
   on:keydown={onKey}
 >
   <div class="head">
-    <Icon name="after" size={14} /><span class="muted">New task after</span><b>{afterLabel}</b>
+    {#if afterLabel}
+      <Icon name="after" size={14} /><span class="muted">New task after</span><b>{afterLabel}</b>
+    {:else}
+      <Icon name="plus" size={14} /><span class="muted">New task</span>
+    {/if}
   </div>
   <input class="name" placeholder="Task name" bind:value={draft.label} use:focusInput />
+  {#if !afterLabel}
+    <div class="row">
+      <span class="lbl">Start</span>
+      <input type="date" class="date" value={start} on:input={onDate} />
+    </div>
+  {/if}
   <div class="row">
     <span class="lbl">Length</span>
     <div class="seg">
@@ -103,6 +122,7 @@
     margin-bottom: 10px;
   }
   .name:focus,
+  .date:focus,
   select:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
@@ -141,7 +161,8 @@
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   }
-  select {
+  select,
+  .date {
     font: inherit;
     color: var(--fg);
     background: var(--bg);

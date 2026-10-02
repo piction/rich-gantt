@@ -26,6 +26,9 @@ Bar gestures. Pure model edits live in `barEdits.ts`; the pointer wiring is in
   - **Add after** (`A`): `ui/AddTaskPopover.svelte` + ghost-bar preview of `addTaskAfter`. Id is
     `newTaskId`: first word of the section, ≤5 alphanumerics, plus a unique counter (`found1`).
     `⇧↵` creates and opens another add-after on the new task.
+  - **New task** (toolbar `+ Task` / `N`, no selection needed): same popover plus a start-date
+    picker, defaulting to the chart's earliest start. `addTaskAt` pins it to that date and
+    appends it to the chosen section.
   - **Edit** (`↵` / double-click): `ui/TaskEditor.svelte` — label, metadata keys, raw markdown
     notes, jump to source; id is read-only. Pop-out button for a large markdown editor.
     Saved through `updateTask`.

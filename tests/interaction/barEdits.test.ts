@@ -9,6 +9,7 @@ import {
   deleteTask,
   newTaskId,
   addTaskAfter,
+  addTaskAt,
   updateTask,
   splitMetadataBody,
 } from '../../src/interaction/barEdits';
@@ -135,6 +136,24 @@ describe('addTaskAfter', () => {
     // survives a serialize → parse round trip
     const r = parseDocument(serializeDocument(next));
     expect(r.ok && r.doc.tasks.get(id)!.position).toEqual({ kind: 'after', ids: ['a'] });
+  });
+});
+
+describe('addTaskAt', () => {
+  it('appends a task pinned to the given start at the end of its section', () => {
+    const doc = makeDoc();
+    const { doc: next, id } = addTaskAt(doc, '2026-01-05', {
+      label: 'Kickoff',
+      duration: 3,
+      section: 'S',
+    });
+    expect(next.tasks.get(id)!.position).toEqual({ kind: 'absolute', date: '2026-01-05' });
+    expect(next.sections[0].taskIds).toEqual(['a', 'b', 'c', 'd', id]);
+    const r = parseDocument(serializeDocument(next));
+    expect(r.ok && r.doc.tasks.get(id)!.position).toEqual({
+      kind: 'absolute',
+      date: '2026-01-05',
+    });
   });
 });
 

@@ -18,6 +18,7 @@
     moveTask,
     deleteTask,
     addTaskAfter,
+    addTaskAt,
     updateTask,
     type NewTaskDraft,
   } from '../interaction/barEdits';
@@ -71,10 +72,10 @@
   const TARGET_R = 14; // hit radius when snapping a dropped edge to a front dot
 
   // Focus mode: a clicked bar body is selected and gets the action pill. `mode` is the open
-  // popover (add-after / edit). Body-dragging a selected bar moves it (`move`), which pins it to
+  // popover (add-after / new pinned task / edit). Body-dragging a selected bar moves it (`move`), which pins it to
   // an absolute date and so breaks its `after` links — previewed as cut arrows before release.
   let selectedId: string | null = null;
-  let mode: 'add' | 'edit' | null = null;
+  let mode: 'add' | 'new' | 'edit' | null = null;
   let move: {
     id: string;
     x0: number;
@@ -86,6 +87,7 @@
   } | null = null;
   let durPreview: number | null = null; // length being typed into the pill
   let addDraft: NewTaskDraft = { label: '', duration: 1, section: '' };
+  let newStart = ''; // start date of a 'new' (pinned) task
   let pill: FocusPill;
   let ringEl: SVGRectElement | null = null;
   let barEls: Record<string, SVGGElement | null> = {};
@@ -93,7 +95,11 @@
 
   $: selectedTask = selectedId ? doc.tasks.get(selectedId) ?? null : null;
   $: addPreview =
-    mode === 'add' && selectedId ? addTaskAfter(doc, selectedId, addDraft) : null;
+    mode === 'add' && selectedId
+      ? addTaskAfter(doc, selectedId, addDraft)
+      : mode === 'new'
+        ? addTaskAt(doc, newStart, addDraft)
+        : null;
   $: focusPreview =
     addPreview?.doc ??
     (durPreview !== null && selectedId ? setDuration(doc, selectedId, durPreview) : null);
@@ -351,6 +357,25 @@
     mode = 'add';
   }
 
+  /** Toolbar "+ Task": a free task, pinned by default to the chart's earliest start. */
+  export async function openNew(): Promise<void> {
+    if (!doc.sections.length) return;
+    let first: string | null = null;
+    for (const [id, s] of schedule.tasks) {
+      if (first === null || s.startDay < startOf(first)) first = id;
+    }
+    clearFocus();
+    newStart = first ? fromEpochDay(startOf(first)) : new Date().toISOString().slice(0, 10);
+    addDraft = {
+      label: '',
+      duration: 1,
+      section: (first && sectionOf(first)) || doc.sections[0].name,
+    };
+    mode = 'new';
+    await tick(); // bring the ghost bar (and so the popover) into view
+    if (addPreview) barEls[addPreview.id]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
   async function createTask(chain: boolean): Promise<void> {
     if (!addPreview) return;
     const { doc: next, id } = addPreview;
@@ -381,6 +406,12 @@
     if (e.metaKey || e.ctrlKey || e.altKey || drag || connect || move) return;
     // A keyboard-focused bar (Tab) is selected with Enter.
     const barId = el.closest?.('.bar')?.getAttribute('data-id');
+    if (mode) return;
+    if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      openNew();
+      return;
+    }
     if (!selectedId) {
       if (barId && e.key === 'Enter') {
         e.preventDefault();
@@ -388,7 +419,6 @@
       }
       return;
     }
-    if (mode) return;
     if (e.key === 'Enter' && el.tagName === 'BUTTON') return; // let the button activate
     const k = e.key;
     const order = layout.bars.map((b) => b.id);
@@ -724,9 +754,10 @@
       <span class="warn">unlinks {move.origAfter.join(', ')}</span>{/if}
   </div>
 {/if}
-{#if selectedTask && mode === 'add' && addPreview}
+{#if addPreview && ((selectedTask && mode === 'add') || mode === 'new')}
   <AddTaskPopover
-    afterLabel={selectedTask.label}
+    afterLabel={mode === 'add' ? selectedTask?.label ?? null : null}
+    bind:start={newStart}
     bind:draft={addDraft}
     sections={doc.sections.map((s) => s.name)}
     anchor={barEls[addPreview.id] ?? null}
