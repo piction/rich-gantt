@@ -1,30 +1,37 @@
 <script lang="ts">
-  // Edit popover for the focused task: label, metadata keys (add / rename / change / remove),
-  // the raw free-markdown notes, and a jump to the source. The task id is shown, never editable.
-  // The maximize button pops it out into a large centered dialog for long-form markdown.
+  // Edit popover for the focused task: label, start date, metadata keys (add / rename / change /
+  // remove), the raw free-markdown notes, and a jump to the source. The task id is shown, never
+  // editable. The maximize button pops it out into a large centered dialog for long-form markdown.
   import type { Task } from '../model/types';
   import { splitMetadataBody, type KeyUsage, type MetadataParts } from '../interaction/barEdits';
+  import { isValidDateString } from '../compute/dateMath';
   import Icon from './Icon.svelte';
   import KeyChips from './KeyChips.svelte';
   import { floating } from './floating';
 
   export let task: Task;
+  export let start: string; // current scheduled start, YYYY-MM-DD
   export let anchor: Element | null;
   export let catalog: KeyUsage[];
   export let colorKey: string | null;
   export let colorValues: string[];
-  export let onSave: (edit: { label: string } & MetadataParts) => void;
+  // start is null when unchanged (or not a valid date), so an `after` task stays linked.
+  export let onSave: (edit: { label: string; start: string | null } & MetadataParts) => void;
   export let onCancel: () => void;
   export let onJumpToSource: () => void;
 
   const initial = splitMetadataBody(task.metadata?.body ?? '');
   let label = task.label;
+  let startText = start;
   let attrs: [string, string][] = initial.attrs;
   let notes = initial.notes;
   let expanded = false;
 
+  $: after = task.position.kind === 'after' ? task.position.ids : null;
+
   function save(): void {
-    onSave({ label, attrs, notes });
+    const newStart = startText !== start && isValidDateString(startText) ? startText : null;
+    onSave({ label, start: newStart, attrs, notes });
   }
 
   function focusSelect(el: HTMLInputElement): void {
@@ -74,6 +81,14 @@
   <label class="field">
     <span class="lbl">Name</span>
     <input class="name" bind:value={label} use:focusSelect />
+  </label>
+
+  <label class="field">
+    <span class="lbl">
+      Start
+      {#if after}<span class="muted">(after {after.join(', ')} — a new date unlinks it)</span>{/if}
+    </span>
+    <input type="date" bind:value={startText} />
   </label>
 
   <div class="field">

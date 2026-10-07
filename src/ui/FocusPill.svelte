@@ -1,21 +1,26 @@
 <script lang="ts">
-  // Focus-mode quick actions, floating above the focused bar: link chip (with unlink), length
+  // Focus-mode quick actions, floating above the focused bar: link chip (with unlink) or start
+  // date (click to pick), length
   // stepper (type an exact length), + After, Edit, Delete. Pure view — every action is a callback.
   import type { Task } from '../model/types';
+  import { isValidDateString } from '../compute/dateMath';
   import Icon from './Icon.svelte';
   import { floating } from './floating';
 
   export let task: Task;
   export let anchor: Element | null;
   export let startLabel: string; // pinned start, shown when the task is not `after` anything
+  export let start: string; // the same start as YYYY-MM-DD, for the date picker
   export let excludeWeekends = false;
   export let onUnlink: () => void;
+  export let onSetStart: (date: string) => void;
   export let onPreviewDuration: (days: number | null) => void; // null = clear preview
   export let onSetDuration: (days: number) => void;
   export let onAdd: () => void;
   export let onEdit: () => void;
   export let onDelete: () => void;
 
+  let dateInput: HTMLInputElement;
   let durInput: HTMLInputElement;
   let durText = '';
   let editingDur = false;
@@ -68,6 +73,10 @@
     e.stopPropagation();
   }
 
+  function onDateChange(): void {
+    if (isValidDateString(dateInput.value) && dateInput.value !== start) onSetStart(dateInput.value);
+  }
+
   function step(d: number): void {
     onSetDuration(Math.max(0.5, task.duration + d));
   }
@@ -84,9 +93,24 @@
       </button>
     </span>
   {:else}
-    <span class="chip" title="Pinned start date — drag the bar or use ← / → to move">
-      <Icon name="calendar" size={13} />
-      <span class="name">{startLabel}</span>
+    <span class="datewrap">
+      <button
+        class="chip date"
+        title="Pinned start date — click to pick a date, or drag the bar / use ← / → to move"
+        on:click={() => dateInput.showPicker()}
+      >
+        <Icon name="calendar" size={13} />
+        <span class="name">{startLabel}</span>
+      </button>
+      <input
+        bind:this={dateInput}
+        type="date"
+        class="picker"
+        tabindex="-1"
+        aria-label="Start date"
+        value={start}
+        on:change={onDateChange}
+      />
     </span>
   {/if}
 
@@ -170,6 +194,29 @@
   .chip .name {
     color: var(--fg);
     font-weight: 600;
+  }
+  .datewrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .chip.date {
+    padding: 3px 8px;
+    border-radius: 7px;
+  }
+  .chip.date:hover {
+    background: var(--kbd-bg);
+  }
+  /* Invisible anchor for the native picker, which opens below the chip. */
+  .picker {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
   }
   .chip .x {
     padding: 3px;

@@ -993,8 +993,10 @@
     task={selectedTask}
     anchor={ringEl}
     startLabel={formatDayLabel(startOf(selectedTask.id))}
+    start={fromEpochDay(startOf(selectedTask.id))}
     excludeWeekends={doc.excludeWeekends}
     onUnlink={unlink}
+    onSetStart={(date) => selectedId && onEdit(moveTask(doc, selectedId, date))}
     onPreviewDuration={(d) => (durPreview = d)}
     onSetDuration={setLength}
     onAdd={openAdd}
@@ -1026,12 +1028,16 @@
 {#if selectedTask && mode === 'edit'}
   <TaskEditor
     task={selectedTask}
+    start={fromEpochDay(startOf(selectedTask.id))}
     anchor={ringEl}
     {catalog}
     {colorKey}
     {colorValues}
     onSave={(edit) => {
-      if (selectedId) onEdit(updateTask(doc, selectedId, edit));
+      if (selectedId) {
+        const edited = updateTask(doc, selectedId, edit);
+        onEdit(edit.start ? moveTask(edited, selectedId, edit.start) : edited);
+      }
       mode = null;
     }}
     onCancel={() => (mode = null)}
