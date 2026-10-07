@@ -12,6 +12,18 @@
   import { computeLayout, sourceAnchor, frontAnchor, type Bar, type SectionBand } from './layout';
   import { computeSchedule } from '../compute/scheduler';
   import {
+    textWidth,
+    fitLabel,
+    fitDuration,
+    fmtDays,
+    nameColumnWidth,
+    fitSectionName,
+    LABEL_PAD,
+    BOLD,
+    COL_PAD,
+    COL_GAP,
+  } from './text';
+  import {
     setDuration,
     addDependency,
     canAddDependency,
@@ -137,62 +149,8 @@
   $: renderSchedule = renderDoc === doc ? schedule : computeSchedule(renderDoc);
   $: layout = computeLayout(renderDoc, renderSchedule, zoom, colorKey, weekendDayScale);
 
-  // Labels are drawn inside the bar, colored to contrast the fill. A label that doesn't fit is
-  // clipped to the widest prefix that fits with a trailing "..." — so text never spills past the
-  // bar onto the page background (where its contrast is undefined).
-  const LABEL_PAD = 6;
-  const ELLIPSIS = '...';
-  const BOLD = '600 12px system-ui, sans-serif';
-  const SMALL = '11px system-ui, sans-serif';
-  let measureCtx: CanvasRenderingContext2D | null = null;
-  function textWidth(s: string, font = '12px system-ui, sans-serif'): number {
-    measureCtx ??= document.createElement('canvas').getContext('2d');
-    if (!measureCtx) return s.length * 6.6;
-    measureCtx.font = font;
-    return measureCtx.measureText(s).width;
-  }
-  function fitText(text: string, max: number, font?: string): string {
-    if (max <= 0) return '';
-    if (textWidth(text, font) <= max) return text;
-    let s = text;
-    while (s.length && textWidth(s + ELLIPSIS, font) > max) s = s.slice(0, -1);
-    return s ? s + ELLIPSIS : '';
-  }
-  const fitLabel = (b: Bar): string => fitText(b.label, b.w - 2 * LABEL_PAD);
-
-  // Right-aligned duration (e.g. "5d"), shown inside the bar only when the FULL label plus a
-  // gap plus the duration all fit — i.e. there is leftover space beyond the label.
-  const DUR_GAP = 8;
-  function fitDuration(b: Bar, duration: number): string {
-    const s = `${duration}d`;
-    const inner = b.w - 2 * LABEL_PAD;
-    const labelW = textWidth(b.label);
-    const need = (labelW > 0 ? labelW + DUR_GAP : 0) + textWidth(s);
-    return need <= inner ? s : '';
-  }
-
-  // Section duration shown next to its name; trims float artifacts from working-day spans.
-  const fmtDays = (n: number): string => `${Math.round(n * 100) / 100}d`;
-
-  // Section-name column, left of the scrolling timeline: fits the longest "name  12d" up to
-  // COL_MAX (longer names get an ellipsis), and at least the "+ New section" placeholder.
-  const COL_PAD = 10;
-  const COL_GAP = 8; // between a section name and its duration
-  const COL_MIN = 130;
-  const COL_MAX = 220;
-  $: colW = Math.min(
-    COL_MAX,
-    Math.max(
-      COL_MIN,
-      ...layout.sections.map(
-        (s) => 2 * COL_PAD + textWidth(s.name, BOLD) + COL_GAP + textWidth(fmtDays(s.durationDays), SMALL),
-      ),
-    ),
-  );
-  function sectionName(s: SectionBand): string {
-    const dur = s.hasTasks ? COL_GAP + textWidth(fmtDays(s.durationDays), SMALL) : 0;
-    return fitText(s.name, colW - 2 * COL_PAD - dur, BOLD);
-  }
+  $: colW = nameColumnWidth(layout.sections);
+  const sectionName = (s: SectionBand): string => fitSectionName(s, colW);
 
   function pointerDay(e: PointerEvent): number {
     const x = e.clientX - svgEl.getBoundingClientRect().left;

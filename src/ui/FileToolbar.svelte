@@ -5,8 +5,10 @@
   import { formatDayLabel } from '../compute/dateMath';
   import { theme } from '../stores/viewStore';
   import { get } from 'svelte/store';
+  import ExportDialog from './ExportDialog.svelte';
 
   let fileInput: HTMLInputElement;
+  let exporting = false;
   // Plan title: names the downloaded file, filled from the uploaded file's name.
   let planName = 'plan';
   let committed = planName;
@@ -70,6 +72,7 @@
   <div class="side right">
     <button on:click={() => fileInput.click()}>Upload</button>
     <button on:click={onDownload}>Download</button>
+    <button on:click={() => (exporting = true)} disabled={!$schedule}>Export…</button>
     <input
       bind:this={fileInput}
       type="file"
@@ -82,6 +85,10 @@
     </button>
   </div>
 </div>
+
+{#if exporting}
+  <ExportDialog name={planName.trim() || 'plan'} {meta} onClose={() => (exporting = false)} />
+{/if}
 
 <style>
   /* Three columns: equal-width sides keep the title truly centered. */

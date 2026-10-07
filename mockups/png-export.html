@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PNG export — proposals</title>
+<link rel="stylesheet" href="mock.css" />
+<style>
+  /* ---------- app shell replica ---------- */
+  .shell { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); margin: 10px 0 6px; max-width: 1100px; position: relative; }
+  .tb { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+  .tb .l, .tb .r { display: flex; align-items: center; gap: 8px; }
+  .tb .r { justify-content: flex-end; }
+  .brand { font-size: 13px; font-weight: 700; }
+  .ttl { font-size: 16px; font-weight: 600; }
+  .meta { font-size: 11.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; margin-left: 8px; }
+  .btn { border: 1px solid var(--border); background: var(--bg); color: var(--fg); padding: 4px 10px; font-size: 12px; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .btn:hover, .btn.on { border-color: var(--fg-muted); }
+  .btn.icon { padding: 4px 6px; }
+  .vtb { display: flex; align-items: center; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg-muted); }
+  .vtb .sp { flex: 1; }
+  .zseg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .zseg span { padding: 3px 9px; background: var(--bg); }
+  .zseg span + span { border-left: 1px solid var(--border); }
+  .zseg .on { background: var(--bar-0); color: #fff; }
+  .sel { border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--fg); background: var(--bg); }
+  .legend { display: inline-flex; gap: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .canvas { max-height: 260px; overflow: auto; background: var(--timeline-bg); }
+
+  /* A — Download ▾ menu */
+  .dd { position: relative; }
+  .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 210px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; font-size: 12.5px; }
+  .menu button { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 7px; cursor: pointer; color: var(--fg); }
+  .menu button:hover { background: var(--kbd-bg); }
+  .menu .ext { margin-left: auto; color: var(--fg-muted); font: 11px ui-monospace, monospace; }
+  .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; }
+
+  /* B — Export dialog */
+  .dialog { display: grid; grid-template-columns: 1fr 230px; gap: 0; border-top: 1px solid var(--border); background: var(--surface); }
+  .dialog .pv { padding: 14px; background: repeating-conic-gradient(var(--kbd-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px; min-height: 200px; display: grid; place-items: center; border-right: 1px solid var(--border); }
+  .dialog .pv img { max-width: 100%; box-shadow: var(--shadow); border-radius: 4px; }
+  .dialog .opts { padding: 12px 14px; font-size: 12.5px; display: flex; flex-direction: column; gap: 10px; }
+  .dialog .opts h4 { margin: 0; font-size: 13.5px; }
+  .opt .lbl { display: block; font-size: 11px; font-weight: 600; color: var(--fg-muted); margin-bottom: 3px; }
+  .opt label { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
+  .opt input[type=checkbox] { width: auto; }
+  .opts .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+
+  /* result strip under each demo */
+  .result { max-width: 1100px; border: 1px dashed var(--border); border-radius: 10px; padding: 10px; margin: 8px 0; font-size: 12px; color: var(--fg-muted); background: repeating-conic-gradient(var(--kbd-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+  .result:empty::before { content: 'Click the export action above — the generated PNG appears here.'; }
+  .result img { display: block; max-width: 100%; margin-top: 6px; box-shadow: var(--shadow); border-radius: 4px; }
+  .result .stat { display: flex; gap: 14px; align-items: center; background: var(--bg); padding: 4px 8px; border-radius: 6px; width: fit-content; }
+  .result .stat b { color: var(--fg); }
+  .result .warn { color: var(--danger); }
+
+  .hero { display: grid; grid-template-columns: 1fr 330px; gap: 18px; max-width: 1100px; align-items: start; }
+  .hero .pv img { max-width: 100%; box-shadow: var(--shadow); border-radius: 6px; }
+  .check { font-size: 12.5px; margin: 0; padding-left: 18px; }
+  .check li { margin: 3px 0; }
+  .check .in::marker { content: '✓  '; color: #059669; }
+  .check .out::marker { content: '✕  '; color: var(--danger); }
+  .check h4 { margin: 10px 0 2px -18px; font-size: 12.5px; }
+  .pc { font-size: 13px; max-width: 1100px; margin: 4px 0 0; }
+  .pc td { vertical-align: top; padding: 2px 14px 2px 0; }
+  .pc .good { color: #059669; } .pc .bad { color: var(--danger); }
+  pre.code { font: 11.5px/1.5 ui-monospace, monospace; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; max-width: 1076px; overflow: auto; margin: 8px 0; }
+  .reco { border: 1.5px solid var(--accent); border-radius: 10px; padding: 12px 16px; max-width: 1068px; font-size: 13.5px; background: var(--panel-bg); margin-top: 16px; }
+  .reco h3 { margin: 0 0 6px; font-size: 15px; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Overview</a>
+<h1>PNG export — proposals</h1>
+<p class="lead">
+  Three button placements, each paired with a different implementation. The demos are <b>real</b>:
+  every export action produces an actual PNG from the chart below (download link + size + timing),
+  so the techniques can be compared on output, not just on paper. Toggle the theme top-right to see
+  how each one handles the CSS-variable colors.
+</p>
+
+<h2>What the PNG must contain</h2>
+<div class="hero">
+  <div class="pv" id="hero"></div>
+  <ul class="check">
+    <h4>Exported</h4>
+    <li class="in"><b>Bar colors</b> by the active color key — <code>var(--bar-N)</code> resolved to hex</li>
+    <li class="in">Label colors <code>--bar-N-fg</code> (contrast per fill)</li>
+    <li class="in"><b>Legend</b> (value → color), else the colors mean nothing</li>
+    <li class="in">Section column + section durations</li>
+    <li class="in">Axis ticks, gridlines, weekend shading, alt bands</li>
+    <li class="in">Arrows, chevrons, dashed gap lead-ins</li>
+    <li class="in">Title + date range header</li>
+    <li class="in">The <b>full</b> chart, not the scrolled viewport</li>
+    <h4>Left out</h4>
+    <li class="out">Focus ring, dimming of unselected bars</li>
+    <li class="out">"+ New task" / "+ New section" proposals</li>
+    <li class="out">Connector dots, marquee, cut links, ghosts</li>
+    <li class="out">Pills, popovers, hover card</li>
+  </ul>
+</div>
+
+<!-- ======================= A ======================= -->
+<h2>A · "Download ▾" menu — clone the live SVG + inline computed styles</h2>
+<p class="lead">
+  The existing <b>Download</b> button becomes a split menu (<code>.md</code> / <code>.png</code> / <code>.svg</code>).
+  Export clones the on-screen SVG, copies every element's <code>getComputedStyle</code> (fill, stroke, opacity, font…)
+  into inline styles so the CSS variables and scoped classes survive, draws it on a canvas, then paints title + legend with the canvas API.
+  The chart below has a <b>selected bar</b> on purpose: tick the box off to see what leaks into the PNG.
+</p>
+<div class="shell" id="shellA">
+  <div class="tb">
+    <div class="l"><span class="brand">Gantt Planner</span></div>
+    <div><span class="ttl">Roadmap Q4</span><span class="meta" data-meta></span></div>
+    <div class="r">
+      <button class="btn">Upload</button>
+      <span class="dd">
+        <button class="btn on" id="ddA">Download ▾</button>
+        <div class="menu" id="menuA">
+          <button data-fmt="md"><span data-ic="file"></span>Markdown<span class="ext">.md</span></button>
+          <hr />
+          <button data-fmt="png"><span data-ic="image"></span>PNG image<span class="ext">.png</span></button>
+          <button data-fmt="svg"><span data-ic="image"></span>SVG image<span class="ext">.svg</span></button>
+        </div>
+      </span>
+      <button class="btn">☾</button>
+    </div>
+  </div>
+  <div class="vtb"><span class="zseg"><span class="on">Day</span><span>Week</span><span>Month</span></span>
+    <span>Color by <span class="sel">type ▾</span></span><span class="legend" data-legend></span></div>
+  <div class="canvas"><div class="host" id="hostA"></div></div>
+</div>
+<label style="font-size:12.5px"><input type="checkbox" id="clearA" checked style="width:auto"> Clear selection / strip interaction layers before cloning (the fix A needs)</label>
+<div class="result" id="resA"></div>
+<pre class="code">// utils/exportPng.ts — A
+const PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'opacity', 'font-size', 'font-weight', 'font-family'];
+function inlineStyles(src: Element, dst: Element) {
+  const s = src.querySelectorAll('*'), d = dst.querySelectorAll('*');
+  s.forEach((el, i) => { const cs = getComputedStyle(el);
+    (d[i] as SVGElement).style.cssText = PROPS.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';'); });
+}
+// clone .names + .timeline side by side → strip .proposed/.dot/.focus-ring → Image → canvas → toBlob</pre>
+<table class="pc"><tr>
+  <td class="good">+ No dependency, ~80 lines<br>+ Pixel-identical to the screen (active theme, zoom)<br>+ SVG export falls out of the same clone</td>
+  <td class="bad">− Exports UI state: selection dimming / focus ring unless stripped first<br>− Two SVGs (names + timeline) to stitch; legend & title hand-drawn on canvas<br>− <code>getComputedStyle</code> per node — slow-ish on big plans; current theme only</td>
+</tr></table>
+
+<!-- ======================= B ======================= -->
+<h2>B · "Export…" dialog — dedicated export renderer (recommended)</h2>
+<p class="lead">
+  A separate <b>Export</b> button opens a dialog with a live preview and a few options. Behind it an
+  <code>&lt;ExportChart&gt;</code> component reuses <code>computeLayout()</code> and emits <b>one</b> clean SVG
+  — title header, section column, timeline, legend — with colors already resolved to literals for the chosen theme.
+  No interaction layers exist in it, so selection state can't leak.
+</p>
+<div class="shell" id="shellB">
+  <div class="tb">
+    <div class="l"><span class="brand">Gantt Planner</span></div>
+    <div><span class="ttl">Roadmap Q4</span><span class="meta" data-meta></span></div>
+    <div class="r">
+      <button class="btn">Upload</button><button class="btn">Download</button>
+      <button class="btn on"><span data-ic="image"></span>Export…</button>
+      <button class="btn">☾</button>
+    </div>
+  </div>
+  <div class="dialog">
+    <div class="pv" id="pvB"></div>
+    <div class="opts">
+      <h4>Export image</h4>
+      <div class="opt"><span class="lbl">Format</span><div class="seg" data-opt="fmt"><button class="on" data-v="png">PNG</button><button data-v="svg">SVG</button></div></div>
+      <div class="opt"><span class="lbl">Theme</span><div class="seg" data-opt="theme"><button class="on" data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="current">Current</button></div></div>
+      <div class="opt"><span class="lbl">Include</span>
+        <label><input type="checkbox" data-opt="title" checked> Title &amp; date range</label>
+        <label><input type="checkbox" data-opt="legend" checked> Color legend</label>
+      </div>
+      <div class="opt"><span class="lbl">Resolution</span><div class="seg" data-opt="scale"><button data-v="1">1×</button><button class="on" data-v="2">2×</button><button data-v="3">3×</button></div></div>
+      <div class="foot"><span class="hint" id="infoB"></span><a class="primary" id="dlB" style="text-decoration:none">Download</a></div>
+    </div>
+  </div>
+</div>
+<pre class="code">// render/colors.ts — B: literal colors for an export theme (render code keeps emitting var(--…))
+export function resolveVars(theme: 'light' | 'dark'): (css: string) => string {
+  const root = document.documentElement, prev = root.dataset.theme;
+  root.dataset.theme = theme;                       // synchronous: no repaint between set and restore
+  const cs = getComputedStyle(root);
+  const read = (css: string) => css.replace(/var\((--[\w-]+)\)/g, (_, n) => cs.getPropertyValue(n).trim());
+  …                                                // read all needed vars into a map, then restore prev
+}
+// ui/ExportDialog.svelte → new ExportChart({ target: offscreen, props: { layout, colors, title, legend } })
+//   → XMLSerializer → Image → canvas (scale) → toBlob → download(`${planName}.png`)</pre>
+<table class="pc"><tr>
+  <td class="good">+ Clean output by construction; independent of selection/scroll<br>+ Theme choice (light PNG for slides while working in dark)<br>+ Title + legend are part of the SVG → identical in PNG and SVG<br>+ No dependency; fits "colors are a view concern"</td>
+  <td class="bad">− Most code: bar/arrow/junction markup shared with Timeline (extract a <code>&lt;ChartBody&gt;</code> to avoid duplication)<br>− One more dialog to maintain</td>
+</tr></table>
+
+<!-- ======================= C ======================= -->
+<h2>C · One-click camera button — <code>html-to-image</code> library</h2>
+<p class="lead">
+  A camera icon in the view toolbar, right next to the legend: one click saves the PNG (⇧-click could copy it to the clipboard).
+  <code>html-to-image</code> snapshots a DOM subtree — here a wrapper around legend + chart — handling CSS variables, scoped styles and fonts itself.
+  A <code>filter</code> drops interactive nodes. Loaded from <code>esm.sh</code> in this mockup (needs network).
+</p>
+<div class="shell" id="shellC">
+  <div class="tb">
+    <div class="l"><span class="brand">Gantt Planner</span></div>
+    <div><span class="ttl">Roadmap Q4</span><span class="meta" data-meta></span></div>
+    <div class="r"><button class="btn">Upload</button><button class="btn">Download</button><button class="btn">☾</button></div>
+  </div>
+  <div id="captureC">
+    <div class="vtb"><span class="zseg"><span class="on">Day</span><span>Week</span><span>Month</span></span>
+      <span>Color by <span class="sel">type ▾</span></span><span class="legend" data-legend></span><span class="sp"></span>
+      <button class="btn icon on" id="camC" title="Save as PNG (⇧ copy to clipboard)"><span data-ic="camera"></span></button></div>
+    <div class="canvas" id="canvasC"><div class="host" id="hostC"></div></div>
+  </div>
+</div>
+<div class="result" id="resC"></div>
+<pre class="code">// C
+import { toPng } from 'html-to-image';
+const url = await toPng(exportRoot, {
+  pixelRatio: 2, backgroundColor: bg,
+  width: colW + layout.width, height: layout.height + legendH,     // full size, not the scroll viewport
+  filter: (n) => !(n instanceof Element && n.matches('.proposed, .dot, .focus-ring, .vtb > :not(.legend)')),
+});</pre>
+<table class="pc"><tr>
+  <td class="good">+ Least code<br>+ Captures exactly what's on screen incl. HTML legend</td>
+  <td class="bad">− New dependency (~15 kB)<br>− Fights <code>overflow:auto</code> / <code>position:sticky</code> (must un-scroll the container)<br>− Same UI-state leak as A; current theme only; no SVG output</td>
+</tr></table>
+
+<h2>Comparison</h2>
+<table class="cmp">
+  <tr><th></th><th>A · Menu + clone</th><th>B · Dialog + export renderer</th><th>C · Camera + library</th></tr>
+  <tr><td>Button</td><td>Download ▾ → .png</td><td>Export… dialog w/ preview</td><td>1-click icon in view bar</td></tr>
+  <tr><td>Dependencies</td><td class="good">none</td><td class="good">none</td><td class="meh">html-to-image</td></tr>
+  <tr><td>Effort</td><td class="meh">medium</td><td class="meh">medium-high</td><td class="good">low</td></tr>
+  <tr><td>Selection / UI leak</td><td class="meh">must strip</td><td class="good">impossible</td><td class="meh">must filter</td></tr>
+  <tr><td>Colors (CSS vars)</td><td class="good">via computed style</td><td class="good">resolved per theme</td><td class="good">library</td></tr>
+  <tr><td>Theme choice</td><td class="bad">current only</td><td class="good">light / dark / current</td><td class="bad">current only</td></tr>
+  <tr><td>Legend + title</td><td class="meh">hand-drawn on canvas</td><td class="good">in the SVG</td><td class="good">HTML captured</td></tr>
+  <tr><td>SVG export too</td><td class="good">yes</td><td class="good">yes, clean</td><td class="bad">no</td></tr>
+</table>
+
+<div class="reco">
+  <h3>Recommendation: B's renderer, optionally behind A's menu</h3>
+  The export renderer is the only approach where the output can't depend on what's selected or scrolled, and it gives a
+  light PNG for documents while you work in dark mode. If the dialog feels heavy, the same renderer can sit behind the
+  <b>Download ▾</b> menu with defaults (light, 2×, title + legend) — the dialog can come later.
+</div>
+
+<h2>Open decisions</h2>
+<ol class="pc">
+  <li><b>Default theme</b>: always light (documents/slides) or current?</li>
+  <li><b>Button</b>: Download ▾ menu (A), Export… dialog (B), or camera icon (C)?</li>
+  <li><b>Clipboard copy</b> in addition to download — wanted?</li>
+  <li><b>Very wide plans</b> (month zoom over a year): cap at a max width / scale down, or export as-is?</li>
+</ol>
+
+<script src="mock.js"></script>
+<script>
+  const G = Gantt;
+  G.themeToggle();
+  const TITLE = 'Roadmap Q4';
+  const TYPES = ['architecture', 'development', 'testing'];
+  const IC = {
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  };
+  document.querySelectorAll('[data-ic]').forEach((el) => {
+    el.outerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC[el.dataset.ic]}</svg>`;
+  });
+
+  // Sample + a testing task and an untyped one, so the legend shows 3 colors + None.
+  const tasks = () => [
+    ...G.sample(),
+    { id: 'test1', label: 'E2E tests', section: 'Integration', dur: 3, after: ['dev5'], type: 'testing' },
+    { id: 'rel', label: 'Release', section: 'Integration', dur: 1, after: ['test1'] },
+  ];
+  const T = tasks();
+  const sch = G.schedule(T);
+  const end = Math.max(...[...sch.values()].map((r) => r.end));
+  const META = `${T.length} tasks · ${G.fmtDay(0).slice(4)} – ${G.fmtDay(end - 1).slice(4)}`;
+  const legend = [
+    ...TYPES.filter((ty) => T.some((t) => t.type === ty)).map((ty) => ({ value: ty, fill: `var(--bar-${TYPES.indexOf(ty)})` })),
+    ...(T.some((t) => !t.type) ? [{ value: 'None', fill: 'var(--bar-none)' }] : []),
+  ];
+  document.querySelectorAll('[data-meta]').forEach((el) => (el.textContent = META));
+  document.querySelectorAll('[data-legend]').forEach(
+    (el) => (el.innerHTML = legend.map((e) => `<span><i style="background:${e.fill}"></i>${e.value}</span>`).join('')),
+  );
+
+  // ---------- shared helpers ----------
+  let mctx;
+  const textW = (s, font) => ((mctx ||= document.createElement('canvas').getContext('2d')).font = font, mctx.measureText(s).width);
+
+  async function rasterize(svg, w, h, scale) {
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * scale);
+    c.height = Math.round(h * scale);
+    const ctx = c.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, w, h);
+    return c;
+  }
+  const toBlob = (c) => new Promise((r) => c.toBlob(r, 'image/png'));
+
+  function showResult(el, blob, t0, w, h, note = '') {
+    const url = URL.createObjectURL(blob);
+    el.innerHTML = `<div class="stat"><span><b>${w}×${h}</b> px</span><span><b>${(blob.size / 1024).toFixed(0)}</b> kB</span>
+      <span><b>${(performance.now() - t0).toFixed(0)}</b> ms</span><a href="${url}" download="${TITLE}.png">Download ${TITLE}.png</a>${note}</div><img src="${url}">`;
+  }
+
+  // ---------- B: dedicated export renderer ----------
+  // Read the theme's variables by flipping data-theme synchronously (no repaint happens in between).
+  function themeVars(theme) {
+    const root = document.documentElement;
+    const prev = root.dataset.theme;
+    if (theme !== 'current') root.dataset.theme = theme;
+    const cs = getComputedStyle(root);
+    // capture now, while the theme is applied
+    const cache = new Map();
+    for (const n of ['--timeline-bg', '--fg', '--fg-muted', '--weekend-fill', '--gridline', '--section-alt', '--bar-stroke', '--arrow',
+      '--bar-none', '--bar-none-fg', ...[0, 1, 2, 3, 4, 5].flatMap((i) => [`--bar-${i}`, `--bar-${i}-fg`])])
+      cache.set(n, cs.getPropertyValue(n).trim());
+    if (prev === undefined) delete root.dataset.theme; else root.dataset.theme = prev;
+    return { resolve: (s) => s.replace(/var\((--[\w-]+)\)/g, (m, n) => (cache.has(n) ? cache.get(n) : m)) };
+  }
+
+  const EXPORT_CSS = `
+    text { font-family: system-ui, sans-serif; }
+    .weekend { fill: var(--weekend-fill); } .gridline { stroke: var(--gridline); }
+    .section-band.alt { fill: var(--section-alt); }
+    .section-label { font-size: 12px; font-weight: 600; fill: var(--fg-muted); }
+    .tick-label { font-size: 11px; fill: var(--fg-muted); }
+    .bar-rect { stroke: var(--bar-stroke); } .bar-label { font-size: 12px; } .bar-label.dur { opacity: .7; }
+    .arrow { fill: none; stroke: var(--arrow); stroke-width: 1.5; } .arrowhead { fill: var(--arrow); }
+    .x-title { font-size: 18px; font-weight: 700; fill: var(--fg); } .x-meta { font-size: 12px; fill: var(--fg-muted); }
+    .x-legend { font-size: 12px; fill: var(--fg); }`;
+
+  // One standalone SVG: header + chart (rendered clean: no selection, no dimming) + legend.
+  function exportSvg({ theme = 'light', title = true, withLegend = true } = {}) {
+    const off = document.createElement('div');
+    const L = G.render(off, { tasks: T, dim: false });
+    const chart = off.querySelector('svg').outerHTML;
+    const PAD = 16, HEAD = title ? 46 : 0, LEG = withLegend ? 30 : 0;
+    const W = L.width + 2 * PAD, H = HEAD + L.height + LEG + PAD;
+    let lx = PAD, leg = '';
+    if (withLegend)
+      for (const e of legend) {
+        leg += `<rect x="${lx}" y="${HEAD + L.height + 12}" width="10" height="10" rx="2" style="fill:${e.fill}"/>
+          <text x="${lx + 15}" y="${HEAD + L.height + 21}" class="x-legend">${G.esc(e.value)}</text>`;
+        lx += 15 + textW(e.value, '12px system-ui') + 16;
+      }
+    const v = themeVars(theme);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+      <style>${EXPORT_CSS}</style>
+      <rect width="${W}" height="${H}" style="fill:var(--timeline-bg)"/>
+      ${title ? `<text x="${PAD}" y="28" class="x-title">${TITLE}</text>
+        <text x="${PAD + textW(TITLE, '700 18px system-ui') + 12}" y="28" class="x-meta">${META}</text>` : ''}
+      ${chart.replace('<svg', `<svg x="${PAD}" y="${HEAD}"`)}
+      ${leg}</svg>`;
+    return { svg: v.resolve(svg), W, H };
+  }
+
+  // Hero: what a correct export looks like.
+  (async () => {
+    const { svg, W, H } = exportSvg({ theme: 'light' });
+    const c = await rasterize(svg, W, H, 2);
+    document.querySelector('#hero').innerHTML = `<img src="${URL.createObjectURL(await toBlob(c))}">`;
+  })();
+
+  // B dialog
+  const optsB = { fmt: 'png', theme: 'light', scale: 2, title: true, legend: true };
+  async function updateB() {
+    const t0 = performance.now();
+    const { svg, W, H } = exportSvg({ theme: optsB.theme, title: optsB.title, withLegend: optsB.legend });
+    let blob, w = W, h = H;
+    if (optsB.fmt === 'svg') blob = new Blob([svg], { type: 'image/svg+xml' });
+    else {
+      const c = await rasterize(svg, W, H, optsB.scale);
+      blob = await toBlob(c);
+      w = c.width; h = c.height;
+    }
+    const url = URL.createObjectURL(blob);
+    document.querySelector('#pvB').innerHTML = `<img src="${url}">`;
+    const dl = document.querySelector('#dlB');
+    dl.href = url;
+    dl.download = `${TITLE}.${optsB.fmt}`;
+    document.querySelector('#infoB').textContent =
+      `${w}×${h} · ${(blob.size / 1024).toFixed(0)} kB · ${(performance.now() - t0).toFixed(0)} ms`;
+  }
+  document.querySelectorAll('#shellB .seg').forEach((seg) =>
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      seg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      optsB[seg.dataset.opt] = seg.dataset.opt === 'scale' ? +b.dataset.v : b.dataset.v;
+      updateB();
+    }),
+  );
+  document.querySelectorAll('#shellB input[type=checkbox]').forEach((cb) =>
+    cb.addEventListener('change', () => ((optsB[cb.dataset.opt] = cb.checked), updateB())),
+  );
+  updateB();
+
+  // ---------- A: clone the live SVG + inline computed styles ----------
+  const hostA = document.querySelector('#hostA');
+  const renderA = () => G.render(hostA, { tasks: T, selected: 'dev3' });
+  let LA = renderA();
+  const menuA = document.querySelector('#menuA');
+  document.querySelector('#ddA').onclick = () => (menuA.hidden = !menuA.hidden);
+
+  const PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'opacity', 'font-size', 'font-weight', 'font-family', 'filter'];
+  function cloneInlined(src, strip) {
+    const dst = src.cloneNode(true);
+    const s = src.querySelectorAll('*'), d = dst.querySelectorAll('*');
+    s.forEach((el, i) => {
+      const cs = getComputedStyle(el);
+      d[i].style.cssText = PROPS.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';');
+    });
+    if (strip) {
+      dst.querySelectorAll('.focus-ring').forEach((n) => n.remove());
+      dst.querySelectorAll('.bar, .arrow').forEach((n) => (n.style.opacity = '1'));
+      dst.querySelectorAll('.bar-rect').forEach((n) => (n.style.filter = 'none'));
+      dst.querySelectorAll('.arrow').forEach((n) => { n.style.stroke = getComputedStyle(document.documentElement).getPropertyValue('--arrow'); n.style.strokeWidth = '1.5'; });
+    }
+    return dst;
+  }
+
+  async function exportA(fmt) {
+    menuA.hidden = true;
+    const res = document.querySelector('#resA');
+    if (fmt === 'md') return (res.innerHTML = '<div class="stat">(Markdown download — unchanged)</div>');
+    const t0 = performance.now();
+    const strip = document.querySelector('#clearA').checked;
+    const svgEl = cloneInlined(hostA.querySelector('svg'), strip);
+    const W0 = LA.width, H0 = LA.height;
+    const xml = new XMLSerializer().serializeToString(svgEl);
+    if (fmt === 'svg') return showResult(res, new Blob([xml], { type: 'image/svg+xml' }), t0, W0, H0, ' · SVG');
+    const chart = await rasterize(xml, W0, H0, 2);
+    // compose: title + chart + legend, all via the canvas API
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n) => cs.getPropertyValue(n).trim();
+    const PAD = 16, HEAD = 46, LEG = 30, W = W0 + 2 * PAD, H = HEAD + H0 + LEG + PAD, S = 2;
+    const c = document.createElement('canvas');
+    c.width = W * S; c.height = H * S;
+    const ctx = c.getContext('2d');
+    ctx.scale(S, S);
+    ctx.fillStyle = v('--timeline-bg'); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = v('--fg'); ctx.font = '700 18px system-ui'; ctx.fillText(TITLE, PAD, 28);
+    ctx.fillStyle = v('--fg-muted'); ctx.font = '12px system-ui'; ctx.fillText(META, PAD + ctx.measureText(TITLE).width + 60, 28);
+    ctx.drawImage(chart, PAD, HEAD, W0, H0);
+    let lx = PAD;
+    ctx.font = '12px system-ui';
+    for (const e of legend) {
+      ctx.fillStyle = v(e.fill.slice(4, -1)); ctx.fillRect(lx, HEAD + H0 + 12, 10, 10);
+      ctx.fillStyle = v('--fg'); ctx.fillText(e.value, lx + 15, HEAD + H0 + 21);
+      lx += 15 + ctx.measureText(e.value).width + 16;
+    }
+    showResult(res, await toBlob(c), t0, c.width, c.height,
+      strip ? '' : ' <span class="warn">· selection ring + dimming leaked into the export</span>');
+  }
+  menuA.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-fmt]');
+    if (b) exportA(b.dataset.fmt);
+  });
+
+  // ---------- C: html-to-image ----------
+  G.render(document.querySelector('#hostC'), { tasks: T });
+  document.querySelector('#camC').onclick = async () => {
+    const res = document.querySelector('#resC');
+    res.textContent = 'Loading html-to-image from esm.sh…';
+    const t0 = performance.now();
+    try {
+      const { toBlob: snap } = await import('https://esm.sh/html-to-image@1.11.11');
+      const root = document.querySelector('#captureC');
+      const canvasEl = document.querySelector('#canvasC');
+      // un-scroll: the capture must see the full chart, not the 260 px viewport
+      const prevMax = canvasEl.style.maxHeight;
+      canvasEl.style.maxHeight = 'none'; canvasEl.style.overflow = 'visible';
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--timeline-bg').trim();
+      const blob = await snap(root, {
+        pixelRatio: 2, backgroundColor: bg, width: root.scrollWidth, height: root.scrollHeight,
+        filter: (n) => !(n instanceof Element && n.matches('.zseg, .sel, #camC')),
+      });
+      canvasEl.style.maxHeight = prevMax; canvasEl.style.overflow = '';
+      showResult(res, blob, t0, root.scrollWidth * 2, root.scrollHeight * 2, ' · no title (not in captured subtree)');
+    } catch (err) {
+      res.innerHTML = `<span class="warn">Could not load html-to-image (offline?): ${G.esc(err.message)}</span>`;
+    }
+  };
+  menuA.hidden = false;
+</script>
+</body>
+</html>
